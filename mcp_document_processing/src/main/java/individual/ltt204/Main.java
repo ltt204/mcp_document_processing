@@ -3,8 +3,9 @@ package individual.ltt204;
 import java.util.List;
 
 import individual.ltt204.config.Config;
-import individual.ltt204.services.ParsingService;
-import individual.ltt204.tools.PdfParserTool;
+import individual.ltt204.services.PDFParsingService;
+import individual.ltt204.services.XLSXParsingService;
+import individual.ltt204.tools.ParserTool;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -17,13 +18,18 @@ public final class Main {
     public static McpSyncServer createMcpSyncServerSession() {
         StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
 
-        ParsingService parsingService = new ParsingService();
-        PdfParserTool pdfParserTool = new PdfParserTool(parsingService);
+        PDFParsingService pdfParsingService = new PDFParsingService();
+        ParserTool pdfParserTool = new ParserTool("pdf_parser", "Parses a PDF file and extracts text",
+                pdfParsingService);
+
+        XLSXParsingService xlsxParsingService = new XLSXParsingService();
+        ParserTool xlsxParserTool = new ParserTool("xlsx_parser", "Parses an XLSX file and extracts data",
+                xlsxParsingService);
 
         McpSyncServer syncServer = McpServer.sync(transportProvider)
                 .serverInfo("mcp_document_processing", "1.0.0")
                 .capabilities(Config.getServerCapabilities())
-                .tools(List.of(pdfParserTool.getToolSpec()))
+                .tools(List.of(pdfParserTool.getToolSpec(), xlsxParserTool.getToolSpec()))
                 .build();
         return syncServer;
     }

@@ -7,17 +7,10 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 
-public class ParsingService {
+public class PDFParsingService implements IParsingService {
 
-    public String parseDocument(String docPath) throws RuntimeException {
-        if (docPath == null || docPath.isEmpty()) {
-            throw new RuntimeException("Document path is null or empty");
-        }
-
-        File file = new File(docPath);
-        if (!file.exists()) {
-            throw new RuntimeException("File does not exist: " + docPath);
-        }
+    @Override
+    public String parse(File file) throws RuntimeException {
 
         try (PDDocument pdDocument = Loader.loadPDF(file)) {
             String text = new PDFTextStripper().getText(pdDocument);
