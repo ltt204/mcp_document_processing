@@ -1,0 +1,73 @@
+package individual.ltt204.tools;
+
+import java.io.File;
+
+import individual.ltt204.services.IParsingService;
+import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+
+public class ParserTool {
+    private String name;
+    private String description;
+    private IParsingService parsingService;
+
+    public ParserTool(String name, String description, IParsingService parsingService) {
+        this.name = name;
+        this.description = description;
+        this.parsingService = parsingService;
+    }
+
+    /***
+     * Returns the tool specification for this parser.
+     *
+     * @return The tool specification.
+     */
+    public SyncToolSpecification getToolSpec() {
+        return SyncToolSpecification.builder()
+                .tool(createTool())
+                .callHandler((exchange, request) -> {
+                    String filePath = (String) request.arguments().get("path");
+                    return this.execute(filePath);
+                })
+                .build();
+    }
+
+    public CallToolResult execute(String filePath) {
+        try {
+            if (filePath == null || filePath.isEmpty()) {
+                throw new RuntimeException("Document path is null or empty");
+            }
+
+            File file = new File(filePath);
+            if (!file.exists()) {
+                throw new RuntimeException("File does not exist: " + filePath);
+            }
+
+            String extractedText = parsingService.parse(file);
+            return CallToolResult.builder().addTextContent(extractedText).build();
+        } catch (RuntimeException e) {
+            return CallToolResult.builder()
+                    .isError(true)
+                    .addTextContent("Error parsing file: " + e.getMessage())
+                    .build();
+        }
+    }
+
+    public Tool createTool() {
+        String schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "path": { "type": "string", "description": "Absolute path to a file on this machine." }
+                  },
+                  "required": ["path"]
+                }
+                """;
+
+        return Tool.builder(this.name, McpJsonDefaults.getMapper(), schema)
+                .description(this.description)
+                .build();
+    }
+}

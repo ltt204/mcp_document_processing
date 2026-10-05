@@ -1,46 +1,40 @@
 package individual.ltt204;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.util.List;
 
-import individual.ltt204.requests.RequestBuilder;
-import individual.ltt204.responses.Writer;
-import individual.ltt204.tools.PdfParserTool;
-import individual.ltt204.tools.Tool;
+import individual.ltt204.config.Config;
+import individual.ltt204.services.PDFParsingService;
+import individual.ltt204.services.XLSXParsingService;
+import individual.ltt204.tools.ParserTool;
+import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 
 /**
  * Hello world!
- *
  */
-public class Main {
+public final class Main {
+    public static McpSyncServer createMcpSyncServerSession() {
+        StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
+
+        PDFParsingService pdfParsingService = new PDFParsingService();
+        ParserTool pdfParserTool = new ParserTool("pdf_parser", "Parses a PDF file and extracts text",
+                pdfParsingService);
+
+        XLSXParsingService xlsxParsingService = new XLSXParsingService();
+        ParserTool xlsxParserTool = new ParserTool("xlsx_parser", "Parses an XLSX file and extracts data",
+                xlsxParsingService);
+
+        McpSyncServer syncServer = McpServer.sync(transportProvider)
+                .serverInfo("mcp_document_processing", "1.0.0")
+                .capabilities(Config.getServerCapabilities())
+                .tools(List.of(pdfParserTool.getToolSpec(), xlsxParserTool.getToolSpec()))
+                .build();
+        return syncServer;
+    }
+
     public static void main(String[] args) {
-
-        Tool tool = new PdfParserTool();
-        ToolRegistry registry = ToolRegistry.getInstance();
-        registry.registerTool(tool.getName(), tool);
-
-        RequestBuilder requestBuilder = new RequestBuilder();
-        Writer writer = new Writer();
-        Dispatcher dispatcher = new Dispatcher(registry, writer);
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-
-        // Read the request from the command line or from standard input
-        try {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank())
-                    continue;
-                try {
-                    dispatcher.dispatch(requestBuilder.build(line));
-                } catch (Exception e) {
-                    System.err.println("Failed to handle: " + line + " -> " + e);
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
+        createMcpSyncServerSession();
     }
 }
