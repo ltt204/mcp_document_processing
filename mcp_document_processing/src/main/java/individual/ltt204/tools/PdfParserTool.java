@@ -1,5 +1,6 @@
 package individual.ltt204.tools;
 
+import individual.ltt204.services.ParsingService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
@@ -9,25 +10,39 @@ public class PdfParserTool {
 
     private static SyncToolSpecification toolSpec;
 
-    public static SyncToolSpecification getToolSpec() {
-        toolSpec = SyncToolSpecification.builder()
-                .tool(createTool())
-                .callHandler((exchange, request) -> {
-                    String pdfFilePath = (String) request.arguments().get("path");
-                    return parsePdf(pdfFilePath);
-                })
-                .build();
+    private ParsingService parsingService;
+
+    public PdfParserTool(ParsingService parsingService) {
+        this.parsingService = parsingService;
+    }
+
+    public SyncToolSpecification getToolSpec() {
+        if (toolSpec == null) {
+            toolSpec = SyncToolSpecification.builder()
+                    .tool(createTool())
+                    .callHandler((exchange, request) -> {
+                        String pdfFilePath = (String) request.arguments().get("path");
+                        return this.parsePdf(pdfFilePath);
+                    })
+                    .build();
+        }
+
         return toolSpec;
     }
 
-    public static CallToolResult parsePdf(String pdfFilePath) {
-        // TODO: Parsing logic
-        String extractedText = "Extracted text from PDF at: " + pdfFilePath;
-
-        return CallToolResult.builder().addTextContent(extractedText).build();
+    private CallToolResult parsePdf(String pdfFilePath) {
+        try {
+            String extractedText = parsingService.parseDocument(pdfFilePath);
+            return CallToolResult.builder().addTextContent(extractedText).build();
+        } catch (RuntimeException e) {
+            return CallToolResult.builder()
+                    .isError(true)
+                    .addTextContent("Error parsing PDF: " + e.getMessage())
+                    .build();
+        }
     }
 
-    private static Tool createTool() {
+    private Tool createTool() {
         String schema = """
                 {
                   "type": "object",
