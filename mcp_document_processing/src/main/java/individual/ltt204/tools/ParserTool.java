@@ -1,8 +1,9 @@
 package individual.ltt204.tools;
 
 import java.io.File;
+import java.util.List;
 
-import individual.ltt204.services.IParsingService;
+import individual.ltt204.services.parsing.IParsingService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
@@ -12,11 +13,14 @@ public class ParserTool {
     private String name;
     private String description;
     private IParsingService parsingService;
+    private List<String> supportedExtensions;
 
-    public ParserTool(String name, String description, IParsingService parsingService) {
+    public ParserTool(String name, String description, IParsingService parsingService,
+            List<String> supportedExtensions) {
         this.name = name;
         this.description = description;
         this.parsingService = parsingService;
+        this.supportedExtensions = supportedExtensions;
     }
 
     /***
@@ -69,5 +73,13 @@ public class ParserTool {
         return Tool.builder(this.name, McpJsonDefaults.getMapper(), schema)
                 .description(this.description)
                 .build();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public boolean isSupportedExtension(String extension) {
+        return supportedExtensions.stream().anyMatch(ext -> ext.equalsIgnoreCase(extension));
     }
 }

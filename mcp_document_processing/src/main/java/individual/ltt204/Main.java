@@ -1,36 +1,56 @@
 package individual.ltt204;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import individual.ltt204.config.Config;
-import individual.ltt204.services.PDFParsingService;
-import individual.ltt204.services.XLSXParsingService;
+import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.parsing.PDFParsingService;
+import individual.ltt204.services.parsing.XLSXParsingService;
 import individual.ltt204.tools.ParserTool;
-import io.modelcontextprotocol.json.McpJsonDefaults;
+import individual.ltt204.tools.ToolRegistry;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
-import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 
 /**
  * Hello world!
  */
 public final class Main {
+
+    public static void Worker() {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        executor.submit(() -> {
+            Thread.sleep(1000);
+            return null;
+        });
+    }
+
     public static McpSyncServer createMcpSyncServerSession() {
-        StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
 
         PDFParsingService pdfParsingService = new PDFParsingService();
         ParserTool pdfParserTool = new ParserTool("pdf_parser", "Parses a PDF file and extracts text",
-                pdfParsingService);
+                pdfParsingService, List.of("pdf"));
 
         XLSXParsingService xlsxParsingService = new XLSXParsingService();
         ParserTool xlsxParserTool = new ParserTool("xlsx_parser", "Parses an XLSX file and extracts data",
-                xlsxParsingService);
+                xlsxParsingService, List.of("xlsx"));
 
-        McpSyncServer syncServer = McpServer.sync(transportProvider)
+        ToolRegistry toolRegistry = ToolRegistry.getInstance();
+        toolRegistry.registerTool(pdfParserTool.getName(), pdfParserTool);
+        toolRegistry.registerTool(xlsxParserTool.getName(), xlsxParserTool);
+
+        JobService jobService = new JobService(Config.getJobStorageService(), executor);
+
+        McpSyncServer syncServer = McpServer.sync(Config.getStdioServerTransportProvider())
                 .serverInfo("mcp_document_processing", "1.0.0")
                 .capabilities(Config.getServerCapabilities())
-                .tools(List.of(pdfParserTool.getToolSpec(), xlsxParserTool.getToolSpec()))
+                .tools(List.of(jobService.getSubmitToolJob(), jobService.getStatusToolJob(),
+                        jobService.getResultToolJob()))
                 .build();
+
         return syncServer;
     }
 

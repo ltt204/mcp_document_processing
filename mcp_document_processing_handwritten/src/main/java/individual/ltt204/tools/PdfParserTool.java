@@ -57,4 +57,5 @@ public class PdfParserTool implements Tool {
         return objectMapper.createObjectNode().put("message",
                 "PDF parsing executed successfully for path: " + params.path());
     }
+
 }
