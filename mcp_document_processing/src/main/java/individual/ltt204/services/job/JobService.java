@@ -5,6 +5,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
+import individual.ltt204.config.Config;
 import individual.ltt204.entities.Job;
 import individual.ltt204.entities.JobStatus;
 import individual.ltt204.services.storage.IStorageService;
@@ -13,6 +14,7 @@ import individual.ltt204.tools.ToolRegistry;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 
 /**
@@ -22,7 +24,7 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
  */
 public class JobService {
     private IStorageService<Job> jobStorageService;
-    private ExecutorService pool = Executors.newFixedThreadPool(10);
+    private ExecutorService pool;
 
     public JobService(IStorageService<Job> jobStorageService, ExecutorService pool) {
         this.jobStorageService = jobStorageService;
@@ -68,6 +70,13 @@ public class JobService {
     }
 
     public CallToolResult getJobResult(String jobId) {
+        if (jobId == null || jobId.isEmpty()) {
+            return CallToolResult.builder()
+                    .isError(true)
+                    .addTextContent("Job ID is null or empty")
+                    .build();
+        }
+
         Job job = jobStorageService.retrieve(jobId);
         if (job == null) {
             return CallToolResult.builder()
@@ -75,20 +84,29 @@ public class JobService {
                     .addTextContent("Job not found: " + jobId)
                     .build();
         }
-        if (job.status() != JobStatus.COMPLETED) {
+
+        if (job.status() != JobStatus.COMPLETED && job.status() != JobStatus.ERROR) {
             return CallToolResult.builder()
                     .isError(true)
-                    .addTextContent("Job is at %s: %s".formatted(job.status(), jobId))
+                    .addTextContent("Job is not completed yet. Current status: " + job.status())
                     .build();
         }
-        return CallToolResult.builder()
-                .addTextContent(job.result().toString())
-                .build();
+
+        CallToolResult result = (CallToolResult) job.result().get(job.status() == JobStatus.ERROR ? "error" : "result");
+
+        if (result == null) {
+            return CallToolResult.builder()
+                    .isError(true)
+                    .addTextContent("Job result not available for job: " + jobId)
+                    .build();
+        }
+
+        return result;
     }
 
     private void processJob(Job job) {
         // Set job status to inprogress
-        jobStorageService.store(job.id().toString(), job.WithStatus(JobStatus.IN_PROGRESS));
+        jobStorageService.checkAndUpdate(job.id().toString(), job.WithStatus(JobStatus.IN_PROGRESS));
 
         try {
             ParserTool parserTool = ToolRegistry.getInstance()
@@ -96,11 +114,31 @@ public class JobService {
 
             CallToolResult result = parserTool.execute(job.request().get("filePath").toString());
 
-            jobStorageService.store(job.id().toString(),
-                    job.WithResult(Map.of("content", result.content())).WithStatus(JobStatus.COMPLETED));
+            if (result.isError()) {
+                jobStorageService.checkAndUpdate(
+                        job.id().toString(),
+                        job.WithResult(Map.of("error", result))
+                                .WithStatus(JobStatus.ERROR));
+                return;
+            }
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithResult(Map.of("result", result))
+                            .WithStatus(JobStatus.COMPLETED));
+
         } catch (Exception e) {
-            jobStorageService.store(job.id().toString(),
-                    job.WithResult(Map.of("error", e.getMessage())).WithStatus(JobStatus.ERROR));
+            System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithResult(
+                            Map.of(
+                                    "error", CallToolResult.builder()
+                                            .isError(true)
+                                            .addTextContent("Error processing job: " + e.getMessage())
+                                            .build()))
+                            .WithStatus(JobStatus.ERROR));
         }
     }
 

@@ -52,7 +52,6 @@ public class PdfParserTool implements Tool {
         ObjectMapper objectMapper = new ObjectMapper();
 
         var params = objectMapper.convertValue(arguments, PdfParsingArgumentParams.class);
-        System.out.println("Executing PDF parsing tool with path: " + params.path());
 
         return objectMapper.createObjectNode().put("message",
                 "PDF parsing executed successfully for path: " + params.path());

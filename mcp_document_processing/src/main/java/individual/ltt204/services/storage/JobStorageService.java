@@ -13,7 +13,12 @@ public class JobStorageService implements IStorageService<Job> {
 
     @Override
     public void store(String key, Job value) {
-        jobStorage.computeIfAbsent(value.id().toString(), k -> value);
+        jobStorage.compute(value.id().toString(), (k, v) -> value);
+    }
+
+    @Override
+    public void checkAndUpdate(String key, Job value) {
+        jobStorage.computeIfPresent(value.id().toString(), (k, v) -> value);
     }
 
     @Override

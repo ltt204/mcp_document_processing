@@ -9,6 +9,8 @@ package individual.ltt204.services.storage;
 public interface IStorageService<T> {
     void store(String key, T value);
 
+    void checkAndUpdate(String key, T value);
+
     T retrieve(String key);
 
     void delete(String key);

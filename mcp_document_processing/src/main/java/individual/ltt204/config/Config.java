@@ -6,6 +6,7 @@ import individual.ltt204.services.storage.JobStorageService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
+import tools.jackson.databind.ObjectMapper;
 
 public class Config {
     public static ServerCapabilities getServerCapabilities() {
@@ -20,5 +21,9 @@ public class Config {
 
     public static StdioServerTransportProvider getStdioServerTransportProvider() {
         return new StdioServerTransportProvider(McpJsonDefaults.getMapper());
+    }
+
+    public static ObjectMapper getObjectMapper() {
+        return new ObjectMapper();
     }
 }
