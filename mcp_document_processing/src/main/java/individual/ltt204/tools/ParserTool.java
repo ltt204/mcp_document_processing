@@ -28,25 +28,25 @@ public class ParserTool {
      *
      * @return The tool specification.
      */
-    public SyncToolSpecification getToolSpec() {
-        return SyncToolSpecification.builder()
-                .tool(createTool())
-                .callHandler((exchange, request) -> {
-                    String filePath = (String) request.arguments().get("path");
-                    try {
-                        return this.execute(filePath);
-                    } catch (Exception e) {
-                        System.err.println("Error executing parser tool: " + e.getMessage());
-                        return CallToolResult.builder()
-                                .isError(true)
-                                .addTextContent("Error executing parser tool: " + e.getMessage())
-                                .build();
-                    }
-                })
-                .build();
-    }
+    // public SyncToolSpecification getToolSpec() {
+    // return SyncToolSpecification.builder()
+    // .tool(createTool())
+    // .callHandler((exchange, request) -> {
+    // String filePath = (String) request.arguments().get("path");
+    // try {
+    // return this.execute(filePath);
+    // } catch (Exception e) {
+    // System.err.println("Error executing parser tool: " + e.getMessage());
+    // return CallToolResult.builder()
+    // .isError(true)
+    // .addTextContent("Error executing parser tool: " + e.getMessage())
+    // .build();
+    // }
+    // })
+    // .build();
+    // }
 
-    public CallToolResult execute(String filePath) throws Exception {
+    public String execute(String filePath) throws Exception {
         try {
             if (filePath == null || filePath.isEmpty()) {
                 throw new RuntimeException("Document path is null or empty");
@@ -58,13 +58,9 @@ public class ParserTool {
                 throw new RuntimeException("File does not exist: " + filePath);
             }
 
-            String extractedText = parsingService.parse(file);
-            return CallToolResult.builder().addTextContent(extractedText).build();
+            return parsingService.parse(file);
         } catch (RuntimeException e) {
-            return CallToolResult.builder()
-                    .isError(true)
-                    .addTextContent("Error parsing file: " + e.getMessage())
-                    .build();
+            throw new RuntimeException("Error parsing the document: " + e.getMessage());
         }
     }
 

@@ -2,10 +2,8 @@ package individual.ltt204.services.job;
 
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
-import individual.ltt204.config.Config;
 import individual.ltt204.entities.Job;
 import individual.ltt204.entities.JobStatus;
 import individual.ltt204.services.storage.IStorageService;
@@ -14,7 +12,6 @@ import individual.ltt204.tools.ToolRegistry;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
-import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 
 /**
@@ -23,6 +20,9 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
  * retrieving, and deleting jobs, as well as checking their status and results.
  */
 public class JobService {
+    private static final String RESULT_KEY = "result";
+    private static final String ERROR_KEY = "error";
+
     private IStorageService<Job> jobStorageService;
     private ExecutorService pool;
 
@@ -31,7 +31,7 @@ public class JobService {
         this.pool = pool;
     }
 
-    public synchronized String submitJob(String filePath) {
+    public synchronized String submitJob(String filePath) throws IllegalStateException {
         Job job = new Job(
                 java.util.UUID.randomUUID(),
                 Map.of("filePath", filePath),
@@ -92,14 +92,11 @@ public class JobService {
                     .build();
         }
 
-        CallToolResult result = (CallToolResult) job.result().get(job.status() == JobStatus.ERROR ? "error" : "result");
-
-        if (result == null) {
-            return CallToolResult.builder()
-                    .isError(true)
-                    .addTextContent("Job result not available for job: " + jobId)
-                    .build();
-        }
+        String content = job.result().get(job.status() == JobStatus.ERROR ? ERROR_KEY : RESULT_KEY).toString();
+        CallToolResult result = CallToolResult.builder()
+                .isError(job.status() == JobStatus.ERROR)
+                .addTextContent(content)
+                .build();
 
         return result;
     }
@@ -112,33 +109,18 @@ public class JobService {
             ParserTool parserTool = ToolRegistry.getInstance()
                     .getToolByFileExtension(job.request().get("filePath").toString());
 
-            CallToolResult result = parserTool.execute(job.request().get("filePath").toString());
-
-            if (result.isError()) {
-                jobStorageService.checkAndUpdate(
-                        job.id().toString(),
-                        job.WithResult(Map.of("error", result))
-                                .WithStatus(JobStatus.ERROR));
-                return;
-            }
+            String result = parserTool.execute(job.request().get("filePath").toString());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
-                    job.WithResult(Map.of("result", result))
-                            .WithStatus(JobStatus.COMPLETED));
+                    job.WithResult(Map.of(RESULT_KEY, result)).WithStatus(JobStatus.COMPLETED));
 
         } catch (Exception e) {
             System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
-                    job.WithResult(
-                            Map.of(
-                                    "error", CallToolResult.builder()
-                                            .isError(true)
-                                            .addTextContent("Error processing job: " + e.getMessage())
-                                            .build()))
-                            .WithStatus(JobStatus.ERROR));
+                    job.WithResult(Map.of(ERROR_KEY, e.toString())).WithStatus(JobStatus.ERROR));
         }
     }
 
@@ -161,8 +143,16 @@ public class JobService {
                         .build())
                 .callHandler((exchange, request) -> {
                     String filePath = (String) request.arguments().get("path");
-                    String jobId = submitJob(filePath);
-                    return CallToolResult.builder().addTextContent(jobId).build();
+
+                    try {
+                        String jobId = submitJob(filePath);
+                        return CallToolResult.builder().addTextContent(jobId).build();
+                    } catch (IllegalStateException e) {
+                        return CallToolResult.builder()
+                                .isError(true)
+                                .addTextContent(e.getMessage())
+                                .build();
+                    }
                 })
                 .build();
     }
