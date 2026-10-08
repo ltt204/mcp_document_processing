@@ -48,9 +48,6 @@ public class ParserTool {
 
     public String execute(String filePath) throws Exception {
         try {
-            if (filePath == null || filePath.isEmpty()) {
-                throw new RuntimeException("Document path is null or empty");
-            }
 
             File file = new File(filePath);
             if (!file.exists()) {

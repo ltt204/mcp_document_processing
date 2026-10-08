@@ -31,10 +31,10 @@ public class JobService {
         this.pool = pool;
     }
 
-    public synchronized String submitJob(String filePath) throws IllegalStateException {
+    public String submitJob(String filePath) throws IllegalStateException {
         Job job = new Job(
                 java.util.UUID.randomUUID(),
-                Map.of("filePath", filePath),
+                Map.of("filePath", filePath.trim()),
                 null,
                 JobStatus.PENDING,
                 "Job for file: " + filePath,
@@ -50,6 +50,10 @@ public class JobService {
         }
 
         return job.id().toString();
+    }
+
+    public int getJobCount() {
+        return jobStorageService.getCount();
     }
 
     public Job retrieveJob(String jobId) {
@@ -120,7 +124,7 @@ public class JobService {
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
-                    job.WithResult(Map.of(ERROR_KEY, e.toString())).WithStatus(JobStatus.ERROR));
+                    job.WithResult(Map.of(ERROR_KEY, e.getMessage().toString())).WithStatus(JobStatus.ERROR));
         }
     }
 

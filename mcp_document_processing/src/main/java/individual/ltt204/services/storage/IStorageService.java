@@ -14,4 +14,6 @@ public interface IStorageService<T> {
     T retrieve(String key);
 
     void delete(String key);
+
+    int getCount();
 }

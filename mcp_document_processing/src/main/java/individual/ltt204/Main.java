@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import individual.ltt204.config.Config;
 import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.parsing.PDFParsingService;
 import individual.ltt204.services.parsing.XLSXParsingService;
 import individual.ltt204.tools.ParserTool;
@@ -32,20 +33,20 @@ public final class Main {
         ParserTool xlsxParserTool = new ParserTool("xlsx_parser", "Parses an XLSX file and extracts data",
                 xlsxParsingService, List.of("xlsx"));
 
-        // IParsingService slow = file -> {
-        // try {
-        // Thread.sleep(10_000);
-        // } catch (InterruptedException e) {
-        // throw new RuntimeException(e);
-        // }
-        // return "slept";
-        // };
+        IParsingService slowParser = file -> {
+            try {
+                Thread.sleep(10_000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            return "slept";
+        };
 
         ToolRegistry toolRegistry = ToolRegistry.getInstance();
         toolRegistry.registerTool(pdfParserTool.getName(), pdfParserTool);
         toolRegistry.registerTool(xlsxParserTool.getName(), xlsxParserTool);
-        // toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
-        // "Sleeps 10s", slow, List.of("slow")));
+        toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
+                "Sleeps 10s", slowParser, List.of("slow")));
 
         JobService jobService = new JobService(Config.getJobStorageService(), executor);
 

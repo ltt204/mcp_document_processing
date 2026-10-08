@@ -33,6 +33,10 @@ public class ToolRegistry {
     }
 
     public ParserTool getToolByFileExtension(String filePath) {
+        if (filePath == null || filePath.isEmpty()) {
+            throw new RuntimeException("Document path is null or empty");
+        }
+
         String extension = getFileExtension(filePath);
         for (ParserTool tool : tools.values()) {
             if (tool.isSupportedExtension(extension)) {
@@ -40,6 +44,10 @@ public class ToolRegistry {
             }
         }
         throw new RuntimeException("No tool registered for file extension: " + extension);
+    }
+
+    public void clear() {
+        tools.clear();
     }
 
     private String getFileExtension(String filePath) {

@@ -9,7 +9,7 @@ import individual.ltt204.entities.Job;
  * Storing Job Results in a ConcurrentHashMap.
  */
 public class JobStorageService implements IStorageService<Job> {
-    private static ConcurrentHashMap<String, Job> jobStorage = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, Job> jobStorage = new ConcurrentHashMap<>();
 
     @Override
     public void store(String key, Job value) {
@@ -29,5 +29,10 @@ public class JobStorageService implements IStorageService<Job> {
     @Override
     public void delete(String key) {
         jobStorage.remove(key);
+    }
+
+    @Override
+    public int getCount() {
+        return jobStorage.size();
     }
 }
