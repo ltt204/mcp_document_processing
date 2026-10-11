@@ -128,6 +128,20 @@ public class JobService {
         }
     }
 
+    private CallToolResult cancelJob(String jobId) {
+        Job job = jobStorageService.retrieve(jobId);
+        if (job == null) {
+            throw new IllegalArgumentException("Job not found: " + jobId);
+        }
+
+        boolean success = jobStorageService.checkAndUpdate(job.id().toString(), job.WithStatus(JobStatus.CANCELED));
+
+        return CallToolResult.builder()
+                .isError(!success)
+                .addTextContent(success ? "Job canceled successfully" : "Failed to cancel job")
+                .build();
+    }
+
     public SyncToolSpecification getSubmitToolJob() {
         String schema = """
                 {
@@ -205,6 +219,30 @@ public class JobService {
                 .callHandler((exchange, request) -> {
                     String jobId = (String) request.arguments().get("jobId");
                     return getJobResult(jobId);
+                })
+                .build();
+    }
+
+    public SyncToolSpecification cancelToolJob(String jobID) {
+        String name = "get_result";
+        String schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "jobId": { "type": "string", "description": "ID of the job to retrieve result for" }
+                  },
+                  "required": ["jobId"]
+                }
+                """;
+        String description = "Retrieves the result of a completed job";
+
+        return SyncToolSpecification.builder()
+                .tool(Tool.builder(name, McpJsonDefaults.getMapper(), schema)
+                        .description(description)
+                        .build())
+                .callHandler((exchange, request) -> {
+                    String jobId = (String) request.arguments().get("jobId");
+                    return cancelJob(jobId);
                 })
                 .build();
     }

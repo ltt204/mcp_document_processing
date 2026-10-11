@@ -1,5 +1,7 @@
 package individual.ltt204.services.storage;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import individual.ltt204.entities.Job;
@@ -10,6 +12,13 @@ import individual.ltt204.entities.JobStatus;
  * Storing Job Results in a ConcurrentHashMap.
  */
 public class JobStorageService implements IStorageService<Job> {
+    private static Set<JobStatus> FINAL_STATES = new HashSet<>();
+
+    static {
+        FINAL_STATES.add(JobStatus.COMPLETED);
+        FINAL_STATES.add(JobStatus.ERROR);
+        FINAL_STATES.add(JobStatus.CANCELED);
+    }
     private ConcurrentHashMap<String, Job> jobStorage = new ConcurrentHashMap<>();
 
     @Override
@@ -18,8 +27,11 @@ public class JobStorageService implements IStorageService<Job> {
     }
 
     @Override
-    public void checkAndUpdate(String key, Job value) {
-        jobStorage.computeIfPresent(value.id().toString(), (k, v) -> v.status() != JobStatus.CANCELED ? value : v);
+    public boolean checkAndUpdate(String key, Job value) {
+        Job saved = jobStorage.computeIfPresent(value.id().toString(),
+                (k, v) -> FINAL_STATES.contains(v.status()) ? v : value);
+
+        return saved != null;
     }
 
     @Override
