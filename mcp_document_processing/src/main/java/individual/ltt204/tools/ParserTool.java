@@ -44,7 +44,7 @@ public class ParserTool {
     // .build();
     // }
 
-    public String execute(String filePath) throws Exception {
+    public String execute(String filePath) throws RuntimeException, InterruptedException {
         try {
 
             File file = new File(filePath);

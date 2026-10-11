@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +22,7 @@ import individual.ltt204.entities.Job;
 import individual.ltt204.entities.JobStatus;
 import individual.ltt204.services.job.JobService;
 import individual.ltt204.services.parsing.IParsingService;
+import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import individual.ltt204.tools.ParserTool;
@@ -28,6 +30,7 @@ import individual.ltt204.tools.ToolRegistry;
 
 public class JobServiceTest {
     private IStorageService<Job> jobStorageService;
+    private IStorageService<Future<?>> futureStorageService;
     private ExecutorService pool;
     private IParsingService slowParsingService;
     private JobService jobService;
@@ -38,9 +41,10 @@ public class JobServiceTest {
     @BeforeEach
     public void setUp() {
         jobStorageService = new JobStorageService();
+        futureStorageService = new ActiveFutureStorageService();
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
-        jobService = new JobService(jobStorageService, pool);
+        jobService = new JobService(jobStorageService, futureStorageService, pool);
 
         started = new CountDownLatch(2);
         release = new CountDownLatch(1);

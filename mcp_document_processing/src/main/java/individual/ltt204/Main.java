@@ -37,7 +37,7 @@ public final class Main {
             try {
                 Thread.sleep(10_000);
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                throw e;
             }
             return "slept";
         };
@@ -48,13 +48,14 @@ public final class Main {
         toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
                 "Sleeps 10s", slowParser, List.of("slow")));
 
-        JobService jobService = new JobService(Config.getJobStorageService(), executor);
+        JobService jobService = new JobService(Config.getJobStorageService(), Config.getFutureActiveStorageService(),
+                executor);
 
         McpSyncServer syncServer = McpServer.sync(Config.getStdioServerTransportProvider())
                 .serverInfo("mcp_document_processing", "1.0.0")
                 .capabilities(Config.getServerCapabilities())
                 .tools(List.of(jobService.getSubmitToolJob(), jobService.getStatusToolJob(),
-                        jobService.getResultToolJob()))
+                        jobService.getResultToolJob(), jobService.cancelToolJob()))
                 .build();
 
         return syncServer;

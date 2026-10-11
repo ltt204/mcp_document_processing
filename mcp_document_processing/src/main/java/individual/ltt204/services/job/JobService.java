@@ -2,6 +2,7 @@ package individual.ltt204.services.job;
 
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 
 import individual.ltt204.entities.Job;
@@ -22,12 +23,16 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
 public class JobService {
     private static final String RESULT_KEY = "result";
     private static final String ERROR_KEY = "error";
+    private static final String CANCELED_KEY = "canceled";
 
     private IStorageService<Job> jobStorageService;
+    private IStorageService<Future<?>> futureStorageService;
     private ExecutorService pool;
 
-    public JobService(IStorageService<Job> jobStorageService, ExecutorService pool) {
+    public JobService(IStorageService<Job> jobStorageService, IStorageService<Future<?>> futureStorageService,
+            ExecutorService pool) {
         this.jobStorageService = jobStorageService;
+        this.futureStorageService = futureStorageService;
         this.pool = pool;
     }
 
@@ -42,10 +47,12 @@ public class JobService {
 
         jobStorageService.store(job.id().toString(), job);
         try {
-            pool.execute(() -> processJob(job));
+            Future<?> queuedJob = pool.submit(() -> processJob(job));
+            futureStorageService.store(job.id().toString(), queuedJob);
         } catch (RejectedExecutionException e) {
             // Handle the case where the task cannot be executed
             jobStorageService.delete(job.id().toString());
+            futureStorageService.delete(job.id().toString());
             throw new IllegalStateException("Server busy, retry later");
         }
 
@@ -89,16 +96,15 @@ public class JobService {
                     .build();
         }
 
-        if (job.status() != JobStatus.COMPLETED && job.status() != JobStatus.ERROR) {
+        if (job.status() == JobStatus.ERROR) {
             return CallToolResult.builder()
                     .isError(true)
-                    .addTextContent("Job is not completed yet. Current status: " + job.status())
+                    .addTextContent("Failed to complete job: " + job.result().get("error"))
                     .build();
         }
 
-        String content = job.result().get(job.status() == JobStatus.ERROR ? ERROR_KEY : RESULT_KEY).toString();
+        String content = job.result().get(job.status() == JobStatus.CANCELED ? CANCELED_KEY : RESULT_KEY).toString();
         CallToolResult result = CallToolResult.builder()
-                .isError(job.status() == JobStatus.ERROR)
                 .addTextContent(content)
                 .build();
 
@@ -110,6 +116,10 @@ public class JobService {
         jobStorageService.checkAndUpdate(job.id().toString(), job.WithStatus(JobStatus.IN_PROGRESS));
 
         try {
+            if (Thread.currentThread().isInterrupted()) {
+                System.err.println("Throw InterruptedException for job " + job.id());
+                throw new InterruptedException("Job is canceled");
+            }
             ParserTool parserTool = ToolRegistry.getInstance()
                     .getToolByFileExtension(job.request().get("filePath").toString());
 
@@ -119,12 +129,21 @@ public class JobService {
                     job.id().toString(),
                     job.WithResult(Map.of(RESULT_KEY, result)).WithStatus(JobStatus.COMPLETED));
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
                     job.WithResult(Map.of(ERROR_KEY, e.getMessage().toString())).WithStatus(JobStatus.ERROR));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Cancaled Job " + job.id() + ": " + e.getMessage());
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithResult(Map.of(CANCELED_KEY, "Job is canceled!")).WithStatus(JobStatus.CANCELED));
+        } finally {
+            futureStorageService.delete(job.id().toString());
         }
     }
 
@@ -134,11 +153,12 @@ public class JobService {
             throw new IllegalArgumentException("Job not found: " + jobId);
         }
 
-        boolean success = jobStorageService.checkAndUpdate(job.id().toString(), job.WithStatus(JobStatus.CANCELED));
+        Future<?> future = futureStorageService.retrieve(jobId);
+        boolean canceled = future.cancel(true);
 
         return CallToolResult.builder()
-                .isError(!success)
-                .addTextContent(success ? "Job canceled successfully" : "Failed to cancel job")
+                .isError(!canceled)
+                .addTextContent(canceled ? "Job canceled successfully" : "Failed to cancel job")
                 .build();
     }
 
@@ -223,8 +243,8 @@ public class JobService {
                 .build();
     }
 
-    public SyncToolSpecification cancelToolJob(String jobID) {
-        String name = "get_result";
+    public SyncToolSpecification cancelToolJob() {
+        String name = "cancel_job";
         String schema = """
                 {
                   "type": "object",
