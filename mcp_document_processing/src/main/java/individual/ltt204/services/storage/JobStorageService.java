@@ -3,6 +3,7 @@ package individual.ltt204.services.storage;
 import java.util.concurrent.ConcurrentHashMap;
 
 import individual.ltt204.entities.Job;
+import individual.ltt204.entities.JobStatus;
 
 /**
  * JobStorageService
@@ -18,7 +19,7 @@ public class JobStorageService implements IStorageService<Job> {
 
     @Override
     public void checkAndUpdate(String key, Job value) {
-        jobStorage.computeIfPresent(value.id().toString(), (k, v) -> value);
+        jobStorage.computeIfPresent(value.id().toString(), (k, v) -> v.status() != JobStatus.CANCELED ? value : v);
     }
 
     @Override

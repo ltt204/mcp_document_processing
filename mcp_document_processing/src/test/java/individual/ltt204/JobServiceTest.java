@@ -25,7 +25,6 @@ import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
-import io.modelcontextprotocol.spec.McpSchema.TextContent;
 
 public class JobServiceTest {
     private IStorageService<Job> jobStorageService;

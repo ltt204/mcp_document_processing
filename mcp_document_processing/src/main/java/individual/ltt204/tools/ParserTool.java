@@ -5,8 +5,6 @@ import java.util.List;
 
 import individual.ltt204.services.parsing.IParsingService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
-import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
-import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 
 public class ParserTool {
