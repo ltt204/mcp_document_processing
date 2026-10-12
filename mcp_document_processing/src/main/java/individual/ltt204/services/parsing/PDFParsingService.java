@@ -10,12 +10,21 @@ import org.apache.pdfbox.text.PDFTextStripper;
 public class PDFParsingService implements IParsingService {
 
     @Override
-    public String parse(File file) throws RuntimeException {
+    public String parse(File file) throws RuntimeException, InterruptedException {
 
         try (PDDocument pdDocument = Loader.loadPDF(file)) {
-            String text = new PDFTextStripper().getText(pdDocument);
-            return text;
+            PDFTextStripper pdfStripper = new PDFTextStripper();
 
+            for (int page = 1; page <= pdDocument.getNumberOfPages(); page++) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("Thread was interrupted during parsing.");
+                }
+
+                pdfStripper.setStartPage(page);
+                pdfStripper.setEndPage(page);
+            }
+
+            return pdfStripper.getText(pdDocument);
         } catch (IOException e) {
             throw new RuntimeException("Error parsing the document: " + e.getMessage());
         }

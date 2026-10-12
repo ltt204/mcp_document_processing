@@ -15,7 +15,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 public class XLSXParsingService implements IParsingService {
 
     @Override
-    public String parse(File file) throws RuntimeException {
+    public String parse(File file) throws RuntimeException, InterruptedException {
 
         try (Workbook workbook = new XSSFWorkbook(file)) {
             StringBuilder extractedText = new StringBuilder();
@@ -26,6 +26,9 @@ public class XLSXParsingService implements IParsingService {
             for (Sheet sheet : workbook) {
                 extractedText.append("Sheet: ").append(sheet.getSheetName()).append("\n");
                 for (Row row : sheet) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedException("Thread was interrupted during parsing.");
+                    }
                     boolean firstCell = true;
 
                     // Use getLastCellNum to preserve empty or missing cells correctly
