@@ -17,7 +17,7 @@ public class JobStorageService implements IStorageService<Job> {
     static {
         FINAL_STATES.add(JobStatus.COMPLETED);
         FINAL_STATES.add(JobStatus.ERROR);
-        FINAL_STATES.add(JobStatus.CANCELED);
+        FINAL_STATES.add(JobStatus.CANCELLED);
     }
     private ConcurrentHashMap<String, Job> jobStorage = new ConcurrentHashMap<>();
 
@@ -28,10 +28,11 @@ public class JobStorageService implements IStorageService<Job> {
 
     @Override
     public boolean checkAndUpdate(String key, Job value) {
+        Job currentJob = jobStorage.get(key);
         Job saved = jobStorage.computeIfPresent(value.id().toString(),
                 (k, v) -> FINAL_STATES.contains(v.status()) ? v : value);
 
-        return saved != null;
+        return !saved.equals(currentJob);
     }
 
     @Override

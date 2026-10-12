@@ -18,4 +18,23 @@ public record Job(
     public Job WithStatus(JobStatus status) {
         return new Job(this.id, this.request, this.result, status, this.name, this.description);
     }
+
+    @Override
+    public int hashCode() {
+        return id.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null || getClass() != obj.getClass())
+            return false;
+        Job other = (Job) obj;
+        return id.equals(other.id) && request.equals(other.request)
+                && (result == null ? other.result == null : result.equals(other.result))
+                && status == other.status
+                && name.equals(other.name)
+                && description.equals(other.description);
+    }
 }

@@ -1,6 +1,7 @@
 package individual.ltt204;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,6 +14,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +29,7 @@ import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
 
 public class JobServiceTest {
     private IStorageService<Job> jobStorageService;
@@ -37,9 +40,11 @@ public class JobServiceTest {
     private ToolRegistry toolRegistry;
     private CountDownLatch started;
     private CountDownLatch release;
+    private AtomicInteger parserCalls;
 
     @BeforeEach
     public void setUp() {
+        parserCalls = new AtomicInteger(0);
         jobStorageService = new JobStorageService();
         futureStorageService = new ActiveFutureStorageService();
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
@@ -49,11 +54,13 @@ public class JobServiceTest {
         started = new CountDownLatch(2);
         release = new CountDownLatch(1);
         slowParsingService = file -> {
+            parserCalls.incrementAndGet();
+
             started.countDown();
             try {
                 release.await();
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                throw e;
             }
 
             return "slept";
@@ -95,6 +102,155 @@ public class JobServiceTest {
             assertEquals(JobStatus.COMPLETED, jobService.retrieveJob(jobId).status(),
                     "Job " + jobId + " should be completed");
         }
+    }
+
+    @Test
+    public void testCancelJobs_SlowReturn_Cancelled() throws InterruptedException {
+        String jobId1 = jobService.submitJob(testResource("file1.slow"));
+        String jobId2 = jobService.submitJob(testResource("file2.slow"));
+
+        assertTrue(started.await(1, TimeUnit.SECONDS), "two workers reached parse()");
+        assertEquals(2, jobService.getJobCount(), "There should be 2 jobs in the queue");
+        assertEquals(2, futureStorageService.getCount(), "There should be 2 active futures in the queue");
+
+        jobService.cancelJob(jobId1);
+        jobService.cancelJob(jobId2);
+
+        release.countDown(); // Allow the workers to finish, so the test can complete
+        pool.shutdown();
+        assertTrue(pool.awaitTermination(1, TimeUnit.SECONDS)); // basically wait for the pool to finish submitted jobs
+
+        assertEquals(0, futureStorageService.getCount(),
+                "There should be 0 active futures in the queue after cancellation");
+
+        for (String jobId : List.of(jobId1, jobId2)) {
+            assertEquals(JobStatus.CANCELLED, jobService.retrieveJob(jobId).status(),
+                    "Job " + jobId + " should be cancelled");
+        }
+    }
+
+    private Job awaitJobStatus(String jobId, JobStatus expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+
+        while (System.nanoTime() < deadline) {
+            Job job = jobService.retrieveJob(jobId);
+
+            if (job != null && job.status() == expected) {
+                return job;
+            }
+
+            Thread.sleep(10);
+        }
+
+        Job actual = jobService.retrieveJob(jobId);
+        throw new AssertionError(
+                "Timed out waiting for " + expected + ", actual status: "
+                        + (actual == null ? "missing" : actual.status()));
+    }
+
+    @Test
+    public void testFastJobCompletesAndFutureIsCleanedUp() throws Exception {
+        CountDownLatch parserStarted = new CountDownLatch(1);
+        CountDownLatch releaseParser = new CountDownLatch(1);
+
+        IParsingService fastParsingService = file -> {
+            parserStarted.countDown();
+            releaseParser.await();
+            return "fast";
+        };
+
+        toolRegistry.registerTool(
+                "fast_parser",
+                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast")));
+
+        String jobId = jobService.submitJob(testResource("file1.fast"));
+
+        assertTrue(parserStarted.await(1, TimeUnit.SECONDS));
+
+        releaseParser.countDown();
+
+        Job job = awaitJobStatus(jobId, JobStatus.COMPLETED);
+
+        assertEquals("fast", job.result().get("result"));
+        assertEquals(0, futureStorageService.getCount());
+    }
+
+    @Test
+    public void testCancelJob_CancellingACompletedJob_ReturnsError() throws Exception {
+        CountDownLatch parserStarted = new CountDownLatch(1);
+        CountDownLatch releaseParser = new CountDownLatch(1);
+
+        IParsingService fastParsingService = file -> {
+            parserStarted.countDown();
+            releaseParser.await();
+            return "fast";
+        };
+
+        toolRegistry.registerTool(
+                "fast_parser",
+                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast")));
+
+        String jobId = jobService.submitJob(testResource("file1.fast"));
+
+        assertTrue(parserStarted.await(1, TimeUnit.SECONDS));
+
+        releaseParser.countDown();
+
+        Job job = awaitJobStatus(jobId, JobStatus.COMPLETED);
+
+        assertEquals("fast", job.result().get("result"));
+        assertEquals(0, futureStorageService.getCount());
+
+        var result = jobService.cancelJob(jobId);
+        assertTrue(result.isError());
+        assertTrue(((TextContent) result.content().get(0)).text().contains("already in a final state"));
+    }
+
+    @Test
+    public void testCancelJob_CancellingAPendingJob_ReturnsError() throws Exception {
+        CountDownLatch parserStarted = new CountDownLatch(1);
+        CountDownLatch releaseParser = new CountDownLatch(1);
+
+        IParsingService slowParsingService = file -> {
+            parserCalls.incrementAndGet();
+
+            parserStarted.countDown();
+            releaseParser.await();
+
+            return "slow";
+        };
+
+        toolRegistry.registerTool(
+                "slow_parser",
+                new ParserTool("slow_parser", "Returns slow", slowParsingService, List.of("slow")));
+
+        String jobId1 = jobService.submitJob(testResource("file1.slow"));
+        String jobId2 = jobService.submitJob(testResource("file2.slow"));
+
+        assertTrue(parserStarted.await(1, TimeUnit.SECONDS));
+
+        String jobId3 = jobService.submitJob(testResource("file3.slow"));
+        assertEquals(JobStatus.PENDING, jobService.retrieveJob(jobId3).status(),
+                "Job 3 should be pending");
+
+        var result = jobService.cancelJob(jobId3);
+
+        assertFalse(result.isError());
+        assertTrue(((TextContent) result.content().get(0)).text().contains("successfully"));
+
+        releaseParser.countDown();
+        pool.shutdown();
+        assertTrue(pool.awaitTermination(1, TimeUnit.SECONDS));
+
+        Job job1 = awaitJobStatus(jobId1, JobStatus.COMPLETED);
+        Job job2 = awaitJobStatus(jobId2, JobStatus.COMPLETED);
+        assertEquals("slow", job1.result().get("result"));
+        assertEquals("slow", job2.result().get("result"));
+
+        assertEquals(JobStatus.CANCELLED, jobService.retrieveJob(jobId3).status(),
+                "Job 3 should be cancelled");
+        assertEquals(0, futureStorageService.getCount());
+        assertEquals(2, parserCalls.get());
     }
 
     @AfterEach

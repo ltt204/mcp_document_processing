@@ -35,7 +35,7 @@ public final class Main {
 
         IParsingService slowParser = file -> {
             try {
-                Thread.sleep(10_000);
+                Thread.sleep(3_000);
             } catch (InterruptedException e) {
                 throw e;
             }
