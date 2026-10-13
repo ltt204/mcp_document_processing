@@ -14,6 +14,7 @@ public class PDFParsingService implements IParsingService {
 
         try (PDDocument pdDocument = Loader.loadPDF(file)) {
             PDFTextStripper pdfStripper = new PDFTextStripper();
+            StringBuilder outputFilePathBuilder = new StringBuilder();
 
             for (int page = 1; page <= pdDocument.getNumberOfPages(); page++) {
                 if (Thread.currentThread().isInterrupted()) {
@@ -22,9 +23,12 @@ public class PDFParsingService implements IParsingService {
 
                 pdfStripper.setStartPage(page);
                 pdfStripper.setEndPage(page);
+
+                String pageText = pdfStripper.getText(pdDocument);
+                outputFilePathBuilder.append(pageText);
             }
 
-            return pdfStripper.getText(pdDocument);
+            return outputFilePathBuilder.toString();
         } catch (IOException e) {
             throw new RuntimeException("Error parsing the document: " + e.getMessage());
         }

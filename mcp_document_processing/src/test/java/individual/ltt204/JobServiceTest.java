@@ -10,8 +10,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,6 +37,7 @@ public class JobServiceTest {
     private IStorageService<Job> jobStorageService;
     private IStorageService<Future<?>> futureStorageService;
     private ExecutorService pool;
+    private ScheduledExecutorService scheduler;
     private IParsingService slowParsingService;
     private JobService jobService;
     private ToolRegistry toolRegistry;
@@ -49,7 +52,8 @@ public class JobServiceTest {
         futureStorageService = new ActiveFutureStorageService();
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
-        jobService = new JobService(jobStorageService, futureStorageService, pool);
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        jobService = new JobService(jobStorageService, futureStorageService, pool, scheduler);
 
         started = new CountDownLatch(2);
         release = new CountDownLatch(1);
@@ -68,7 +72,7 @@ public class JobServiceTest {
 
         toolRegistry = ToolRegistry.getInstance();
         toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
-                "Sleeps 10s", slowParsingService, List.of("slow")));
+                "Sleeps 10s", slowParsingService, List.of("slow"), 3_000));
     }
 
     @Test
@@ -161,7 +165,7 @@ public class JobServiceTest {
 
         toolRegistry.registerTool(
                 "fast_parser",
-                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast")));
+                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast"), 3_000));
 
         String jobId = jobService.submitJob(testResource("file1.fast"));
 
@@ -188,7 +192,7 @@ public class JobServiceTest {
 
         toolRegistry.registerTool(
                 "fast_parser",
-                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast")));
+                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast"), 3_000));
 
         String jobId = jobService.submitJob(testResource("file1.fast"));
 
@@ -222,7 +226,7 @@ public class JobServiceTest {
 
         toolRegistry.registerTool(
                 "slow_parser",
-                new ParserTool("slow_parser", "Returns slow", slowParsingService, List.of("slow")));
+                new ParserTool("slow_parser", "Returns slow", slowParsingService, List.of("slow"), 3_000));
 
         String jobId1 = jobService.submitJob(testResource("file1.slow"));
         String jobId2 = jobService.submitJob(testResource("file2.slow"));
@@ -251,6 +255,28 @@ public class JobServiceTest {
                 "Job 3 should be cancelled");
         assertEquals(0, futureStorageService.getCount());
         assertEquals(2, parserCalls.get());
+    }
+
+    @Test
+    public void testCancelJob_CancellingATimeoutJob_ReturnsError() throws Exception {
+        String jobId = jobService.submitJob(testResource("file1.slow"));
+
+        // Wait for the job to be in progress
+        Job job = awaitJobStatus(jobId, JobStatus.IN_PROGRESS);
+        assertEquals(JobStatus.IN_PROGRESS, job.status(), "Job should be in progress");
+
+        // Wait for the job to timeout
+        Thread.sleep(4000); // Wait longer than the tool's timeout of 3 seconds
+
+        // Check that the job has timed out
+        job = awaitJobStatus(jobId, JobStatus.TIMEOUT);
+        assertEquals(JobStatus.TIMEOUT, job.status(), "Job should be in timeout state");
+
+        // Attempt to cancel the timed-out job
+        var result = jobService.cancelJob(jobId);
+
+        assertTrue(result.isError());
+        assertTrue(((TextContent) result.content().get(0)).text().contains("already in a final state"));
     }
 
     @AfterEach

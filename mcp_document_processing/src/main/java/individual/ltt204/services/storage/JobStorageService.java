@@ -18,6 +18,7 @@ public class JobStorageService implements IStorageService<Job> {
         FINAL_STATES.add(JobStatus.COMPLETED);
         FINAL_STATES.add(JobStatus.ERROR);
         FINAL_STATES.add(JobStatus.CANCELLED);
+        FINAL_STATES.add(JobStatus.TIMEOUT);
     }
     private ConcurrentHashMap<String, Job> jobStorage = new ConcurrentHashMap<>();
 

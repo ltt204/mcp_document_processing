@@ -46,6 +46,14 @@ public class ToolRegistry {
         throw new RuntimeException("No tool registered for file extension: " + extension);
     }
 
+    public int getToolTimeout(String filePath) {
+        ParserTool tool = getToolByFileExtension(filePath);
+        if (tool != null) {
+            return tool.getTimeout();
+        }
+        throw new RuntimeException("No tool registered with name: " + filePath);
+    }
+
     public void clear() {
         tools.clear();
     }

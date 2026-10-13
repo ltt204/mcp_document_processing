@@ -12,37 +12,16 @@ public class ParserTool {
     private String description;
     private IParsingService parsingService;
     private List<String> supportedExtensions;
+    private int timeout;
 
     public ParserTool(String name, String description, IParsingService parsingService,
-            List<String> supportedExtensions) {
+            List<String> supportedExtensions, int timeout) {
         this.name = name;
         this.description = description;
         this.parsingService = parsingService;
         this.supportedExtensions = supportedExtensions;
+        this.timeout = timeout;
     }
-
-    /***
-     * Returns the tool specification for this parser.
-     *
-     * @return The tool specification.
-     */
-    // public SyncToolSpecification getToolSpec() {
-    // return SyncToolSpecification.builder()
-    // .tool(createTool())
-    // .callHandler((exchange, request) -> {
-    // String filePath = (String) request.arguments().get("path");
-    // try {
-    // return this.execute(filePath);
-    // } catch (Exception e) {
-    // System.err.println("Error executing parser tool: " + e.getMessage());
-    // return CallToolResult.builder()
-    // .isError(true)
-    // .addTextContent("Error executing parser tool: " + e.getMessage())
-    // .build();
-    // }
-    // })
-    // .build();
-    // }
 
     public String execute(String filePath) throws RuntimeException, InterruptedException {
         try {
@@ -81,5 +60,9 @@ public class ParserTool {
 
     public boolean isSupportedExtension(String extension) {
         return supportedExtensions.stream().anyMatch(ext -> ext.equalsIgnoreCase(extension));
+    }
+
+    public int getTimeout() {
+        return timeout != 0 ? timeout : 3_000; // Default to seconds if not set
     }
 }
