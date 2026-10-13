@@ -124,7 +124,7 @@ public class JobService {
                     .build();
         }
 
-        String content = job.result().get(job.status().name().toLowerCase()).toString();
+        String content = job.result().get(job.status().getLabel().toLowerCase()).toString();
         CallToolResult result = CallToolResult.builder()
                 .addTextContent(content)
                 .build();

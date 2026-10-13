@@ -2,6 +2,7 @@ package individual.ltt204;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
@@ -277,6 +279,35 @@ public class JobServiceTest {
 
         assertTrue(result.isError());
         assertTrue(((TextContent) result.content().get(0)).text().contains("already in a final state"));
+    }
+
+    @Test
+    public void testTimeoutJob_CompletesAfterTimeout_ReturnsTimeout() throws Exception {
+        AtomicBoolean keepParsing = new AtomicBoolean(true);
+        IParsingService slowParsingService = file -> {
+            while (keepParsing.get()) {
+            }
+            return "timeout_result";
+        };
+
+        toolRegistry.registerTool(
+                "slow_parser",
+                new ParserTool("slow_parser", "Returns slow", slowParsingService, List.of("timeout"), 50));
+
+        String jobId = jobService.submitJob(testResource("file1.timeout"));
+
+        // Wait for the job to be in progress
+        Job job = awaitJobStatus(jobId, JobStatus.IN_PROGRESS);
+        assertEquals(JobStatus.IN_PROGRESS, job.status(), "Job should be in progress");
+
+        job = awaitJobStatus(jobId, JobStatus.TIMEOUT);
+        assertEquals(JobStatus.TIMEOUT, job.status(), "Job should be in timeout state");
+        keepParsing.set(false);
+
+        job = awaitJobStatus(jobId, JobStatus.TIMEOUT);
+        assertEquals(JobStatus.TIMEOUT, job.status(), "Job should still be in timeout state");
+        assertNull(job.result().get("result"),
+                "Job result should be null since it timed out, with the final state it cannot be updated even the parsing is done");
     }
 
     @AfterEach
