@@ -1,57 +1,40 @@
 package individual.ltt204.tools;
 
 import java.io.File;
+import java.util.List;
 
-import individual.ltt204.services.IParsingService;
+import individual.ltt204.services.parsing.IParsingService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
-import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
-import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 
 public class ParserTool {
     private String name;
     private String description;
     private IParsingService parsingService;
+    private List<String> supportedExtensions;
+    private int timeout;
 
-    public ParserTool(String name, String description, IParsingService parsingService) {
+    public ParserTool(String name, String description, IParsingService parsingService,
+            List<String> supportedExtensions, int timeout) {
         this.name = name;
         this.description = description;
         this.parsingService = parsingService;
+        this.supportedExtensions = supportedExtensions;
+        this.timeout = timeout;
     }
 
-    /***
-     * Returns the tool specification for this parser.
-     *
-     * @return The tool specification.
-     */
-    public SyncToolSpecification getToolSpec() {
-        return SyncToolSpecification.builder()
-                .tool(createTool())
-                .callHandler((exchange, request) -> {
-                    String filePath = (String) request.arguments().get("path");
-                    return this.execute(filePath);
-                })
-                .build();
-    }
-
-    public CallToolResult execute(String filePath) {
+    public String execute(String filePath) throws RuntimeException, InterruptedException {
         try {
-            if (filePath == null || filePath.isEmpty()) {
-                throw new RuntimeException("Document path is null or empty");
-            }
 
             File file = new File(filePath);
             if (!file.exists()) {
+                System.err.println("File does not exist: " + filePath);
                 throw new RuntimeException("File does not exist: " + filePath);
             }
 
-            String extractedText = parsingService.parse(file);
-            return CallToolResult.builder().addTextContent(extractedText).build();
+            return parsingService.parse(file);
         } catch (RuntimeException e) {
-            return CallToolResult.builder()
-                    .isError(true)
-                    .addTextContent("Error parsing file: " + e.getMessage())
-                    .build();
+            throw new RuntimeException("Error parsing the document: " + e.getMessage());
         }
     }
 
@@ -69,5 +52,17 @@ public class ParserTool {
         return Tool.builder(this.name, McpJsonDefaults.getMapper(), schema)
                 .description(this.description)
                 .build();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public boolean isSupportedExtension(String extension) {
+        return supportedExtensions.stream().anyMatch(ext -> ext.equalsIgnoreCase(extension));
+    }
+
+    public int getTimeout() {
+        return timeout != 0 ? timeout : 3_000; // Default to seconds if not set
     }
 }

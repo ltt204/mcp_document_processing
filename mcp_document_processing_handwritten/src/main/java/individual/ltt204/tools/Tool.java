@@ -13,4 +13,6 @@ public interface Tool {
     public String getDescription();
 
     public JsonNode execute(JsonNode arguments);
+
+    public boolean isSupportedFileExtension(String fileExtension);
 }
