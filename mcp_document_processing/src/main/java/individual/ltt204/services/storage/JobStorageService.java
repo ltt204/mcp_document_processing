@@ -29,11 +29,10 @@ public class JobStorageService implements IStorageService<Job> {
 
     @Override
     public boolean checkAndUpdate(String key, Job value) {
-        Job currentJob = jobStorage.get(key);
         Job saved = jobStorage.computeIfPresent(value.id().toString(),
                 (k, v) -> FINAL_STATES.contains(v.status()) ? v : value);
 
-        return !saved.equals(currentJob);
+        return saved == value;
     }
 
     @Override
