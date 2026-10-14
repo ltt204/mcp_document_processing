@@ -12,10 +12,7 @@ import individual.ltt204.entities.JobStatus;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
-import io.modelcontextprotocol.json.McpJsonDefaults;
-import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
-import io.modelcontextprotocol.spec.McpSchema.Tool;
 
 /**
  * JobService
@@ -132,6 +129,40 @@ public class JobService {
         return result;
     }
 
+    public CallToolResult cancelJob(String jobId) {
+        Job job = jobStorageService.retrieve(jobId);
+        if (job == null) {
+            throw new IllegalArgumentException("Job not found: " + jobId);
+        }
+
+        if (job.status() == JobStatus.COMPLETED || job.status() == JobStatus.ERROR
+                || job.status() == JobStatus.CANCELLED || job.status() == JobStatus.TIMEOUT) {
+            return CallToolResult.builder()
+                    .isError(true)
+                    .addTextContent("Job is already in a final state: " + job.status())
+                    .build();
+        }
+
+        Future<?> future = futureStorageService.retrieve(jobId);
+        if (future == null) {
+            throw new IllegalArgumentException("Future not found for job: " + jobId);
+        }
+
+        boolean cancelled = future.cancel(true);
+        futureStorageService.delete(jobId);
+
+        boolean updated = jobStorageService.checkAndUpdate(
+                job.id().toString(),
+                job.WithResult(Map.of(JobStatus.CANCELLED.getLabel().toLowerCase(), "Job is cancelled!"))
+                        .WithStatus(JobStatus.CANCELLED));
+
+        boolean success = cancelled && updated;
+        return CallToolResult.builder()
+                .isError(!success)
+                .addTextContent(success ? "Job cancelled successfully" : "Failed to cancel job")
+                .build();
+    }
+
     private void processJob(Job job) {
         // Set job status to inprogress
         try {
@@ -189,144 +220,5 @@ public class JobService {
                 job.id().toString(),
                 job.WithResult(Map.of(JobStatus.TIMEOUT.getLabel().toLowerCase(), "Job timed out"))
                         .WithStatus(JobStatus.TIMEOUT));
-    }
-
-    public CallToolResult cancelJob(String jobId) {
-        Job job = jobStorageService.retrieve(jobId);
-        if (job == null) {
-            throw new IllegalArgumentException("Job not found: " + jobId);
-        }
-
-        if (job.status() == JobStatus.COMPLETED || job.status() == JobStatus.ERROR
-                || job.status() == JobStatus.CANCELLED || job.status() == JobStatus.TIMEOUT) {
-            return CallToolResult.builder()
-                    .isError(true)
-                    .addTextContent("Job is already in a final state: " + job.status())
-                    .build();
-        }
-
-        Future<?> future = futureStorageService.retrieve(jobId);
-        if (future == null) {
-            throw new IllegalArgumentException("Future not found for job: " + jobId);
-        }
-
-        boolean cancelled = future.cancel(true);
-        futureStorageService.delete(jobId);
-
-        boolean updated = jobStorageService.checkAndUpdate(
-                job.id().toString(),
-                job.WithResult(Map.of(JobStatus.CANCELLED.getLabel().toLowerCase(), "Job is cancelled!"))
-                        .WithStatus(JobStatus.CANCELLED));
-
-        boolean success = cancelled && updated;
-        return CallToolResult.builder()
-                .isError(!success)
-                .addTextContent(success ? "Job cancelled successfully" : "Failed to cancel job")
-                .build();
-    }
-
-    public SyncToolSpecification getSubmitToolJob() {
-        String schema = """
-                {
-                  "type": "object",
-                  "properties": {
-                    "path": { "type": "string", "description": "Absolute path to a file on this machine." }
-                  },
-                  "required": ["path"]
-                }
-                """;
-        String name = "submit_job";
-        String description = "Submits a job for processing a document";
-
-        return SyncToolSpecification.builder()
-                .tool(Tool.builder(name, McpJsonDefaults.getMapper(), schema)
-                        .description(description)
-                        .build())
-                .callHandler((exchange, request) -> {
-                    String filePath = (String) request.arguments().get("path");
-
-                    try {
-                        String jobId = submitJob(filePath);
-                        return CallToolResult.builder().addTextContent(jobId).build();
-                    } catch (RuntimeException e) {
-                        return CallToolResult.builder()
-                                .isError(true)
-                                .addTextContent(e.getMessage())
-                                .build();
-                    }
-                })
-                .build();
-    }
-
-    public SyncToolSpecification getStatusToolJob() {
-        String name = "get_status";
-        String schema = """
-                {
-                  "type": "object",
-                  "properties": {
-                    "jobId": { "type": "string", "description": "ID of the job to check status for" }
-                  },
-                  "required": ["jobId"]
-                }
-                """;
-        String description = "Retrieves the status of a submitted job";
-
-        return SyncToolSpecification.builder()
-                .tool(Tool.builder(name, McpJsonDefaults.getMapper(), schema)
-                        .description(description)
-                        .build())
-                .callHandler((exchange, request) -> {
-                    String jobId = (String) request.arguments().get("jobId");
-                    return getJobStatus(jobId);
-                })
-                .build();
-    }
-
-    public SyncToolSpecification getResultToolJob() {
-        String name = "get_result";
-        String schema = """
-                {
-                  "type": "object",
-                  "properties": {
-                    "jobId": { "type": "string", "description": "ID of the job to retrieve result for" }
-                  },
-                  "required": ["jobId"]
-                }
-                """;
-        String description = "Retrieves the result of a completed job";
-
-        return SyncToolSpecification.builder()
-                .tool(Tool.builder(name, McpJsonDefaults.getMapper(), schema)
-                        .description(description)
-                        .build())
-                .callHandler((exchange, request) -> {
-                    String jobId = (String) request.arguments().get("jobId");
-                    return getJobResult(jobId);
-                })
-                .build();
-    }
-
-    public SyncToolSpecification cancelToolJob() {
-        String name = "cancel_job";
-        String schema = """
-                {
-                  "type": "object",
-                  "properties": {
-                    "jobId": { "type": "string", "description": "ID of the job to cancel" }
-                  },
-                  "required": ["jobId"]
-                }
-                """;
-        String description = "Retrieves the result of a completed job";
-
-        return SyncToolSpecification.builder()
-                .tool(Tool.builder(name, McpJsonDefaults.getMapper(), schema)
-                        .description(description)
-                        .build())
-                .callHandler((exchange, request) -> {
-                    String jobId = (String) request.arguments().get("jobId");
-                    return cancelJob(jobId);
-                })
-                .build();
     }
 }

@@ -13,6 +13,7 @@ import individual.ltt204.services.job.JobService;
 import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.parsing.PDFParsingService;
 import individual.ltt204.services.parsing.XLSXParsingService;
+import individual.ltt204.tools.JobTools;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
 import io.modelcontextprotocol.server.McpServer;
@@ -54,12 +55,13 @@ public final class Main {
 
         JobService jobService = new JobService(Config.getJobStorageService(), Config.getFutureActiveStorageService(),
                 executor, scheduler);
+        JobTools jobTools = new JobTools(jobService);
 
         McpSyncServer syncServer = McpServer.sync(Config.getStdioServerTransportProvider())
                 .serverInfo("mcp_document_processing", "1.0.0")
                 .capabilities(Config.getServerCapabilities())
-                .tools(List.of(jobService.getSubmitToolJob(), jobService.getStatusToolJob(),
-                        jobService.getResultToolJob(), jobService.cancelToolJob()))
+                .tools(List.of(jobTools.getSubmitToolJob(), jobTools.getStatusToolJob(),
+                        jobTools.getResultToolJob(), jobTools.cancelToolJob()))
                 .build();
 
         return syncServer;
