@@ -2,8 +2,10 @@ package individual.ltt204.config;
 
 import java.util.concurrent.Future;
 
+import individual.ltt204.entities.CallEntry;
 import individual.ltt204.entities.Job;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
+import individual.ltt204.services.storage.CallsEntryStorageService;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -33,4 +35,5 @@ public class Config {
     public static ObjectMapper getObjectMapper() {
         return new ObjectMapper();
     }
+
 }

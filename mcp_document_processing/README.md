@@ -13,9 +13,10 @@ The project is currently in active development. The core functionalities are imp
   - [ ] File storage support (e.g., AWS S3, Google Cloud Storage) -- Up coming
 
 ### Decisions
-- [Timeout handling for long-running jobs -- On going](docs/reasonings/timeout-job.md)
-- [Worker pool for concurrent job processing -- On going](docs/reasonings/woker-pool.md)
-- [Job cancellation handling -- On going](docs/reasonings/cancel-job.md)
+- [Timeout handling for long-running jobs](docs/reasonings/timeout-job.md)
+- [Worker pool for concurrent job processing](docs/reasonings/woker-pool.md)
+- [Job cancellation handling](docs/reasonings/cancel-job.md)
+- [Idempotency key handling](docs/reasonings/idempotency-key.md)
 
 ### Quick start
 Prerequisites: 

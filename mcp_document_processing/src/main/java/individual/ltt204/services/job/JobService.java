@@ -118,12 +118,14 @@ public class JobService {
             return CallToolResult.builder()
                     .isError(true)
                     .addTextContent("Job is not completed yet. Current status: " + job.status())
+                    .addTextContent("Job ID: " + jobId)
                     .build();
         }
 
         String content = job.result().get(job.status().getLabel().toLowerCase()).toString();
         CallToolResult result = CallToolResult.builder()
                 .addTextContent(content)
+                .addTextContent("Job ID: " + jobId)
                 .build();
 
         return result;

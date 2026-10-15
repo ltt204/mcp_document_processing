@@ -32,4 +32,9 @@ public class ActiveFutureStorageService implements IStorageService<Future<?>> {
         return futureStorage.size();
     }
 
+    @Override
+    public Future<?> storeAndRetrieve(String key, Future<?> value) {
+        return futureStorage.putIfAbsent(key, value);
+    }
+
 }

@@ -1,5 +1,8 @@
 package individual.ltt204.tools;
 
+import java.util.concurrent.ConcurrentHashMap;
+
+import individual.ltt204.entities.CallEntry;
 import individual.ltt204.services.job.JobService;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
@@ -10,21 +13,24 @@ public class JobTools {
 
     private JobService jobService;
 
+    private ConcurrentHashMap<String, CallEntry> callsStorage = new ConcurrentHashMap<>();
+
     public JobTools(JobService jobService) {
         this.jobService = jobService;
     }
 
     public SyncToolSpecification getSubmitToolJob() {
+        String name = "submit_job";
         String schema = """
                 {
                   "type": "object",
                   "properties": {
+                    "callId": { "type": "string", "description": "Unique identifier for the call" },
                     "path": { "type": "string", "description": "Absolute path to a file on this machine." }
                   },
                   "required": ["path"]
                 }
                 """;
-        String name = "submit_job";
         String description = "Submits a job for processing a document";
 
         return SyncToolSpecification.builder()
@@ -33,10 +39,37 @@ public class JobTools {
                         .build())
                 .callHandler((exchange, request) -> {
                     String filePath = (String) request.arguments().get("path");
+                    String callId = (String) request.arguments().get("callId");
 
                     try {
+                        if (callId != null && !callId.isEmpty()) {
+                            CallEntry e = callsStorage.compute(callId, (k, value) -> {
+                                if (value == null) {
+                                    String jobId = jobService.submitJob(filePath);
+                                    return new CallEntry(filePath, jobId);
+                                }
+
+                                if (!value.getFilePath().equals(filePath)) {
+                                    throw new RuntimeException(
+                                            "Call ID already exists with a different file path: "
+                                                    + value.getFilePath());
+                                }
+
+                                return value;
+                            });
+
+                            return CallToolResult.builder()
+                                    .addTextContent("File path: " + filePath)
+                                    .addTextContent("Call ID: " + callId)
+                                    .addTextContent("Job ID: " + e.getjobId())
+                                    .build();
+                        }
+
                         String jobId = jobService.submitJob(filePath);
-                        return CallToolResult.builder().addTextContent(jobId).build();
+                        return CallToolResult.builder()
+                                .addTextContent("File path: " + filePath)
+                                .addTextContent("Job ID: " + jobId)
+                                .build();
                     } catch (RuntimeException e) {
                         return CallToolResult.builder()
                                 .isError(true)
@@ -106,7 +139,7 @@ public class JobTools {
                   "required": ["jobId"]
                 }
                 """;
-        String description = "Retrieves the result of a completed job";
+        String description = "Cancels a running job";
 
         return SyncToolSpecification.builder()
                 .tool(Tool.builder(name, McpJsonDefaults.getMapper(), schema)
