@@ -49,4 +49,9 @@ public class JobStorageService implements IStorageService<Job> {
     public int getCount() {
         return jobStorage.size();
     }
+
+    @Override
+    public Job storeAndRetrieve(String key, Job value) {
+        return jobStorage.putIfAbsent(key, value);
+    }
 }
