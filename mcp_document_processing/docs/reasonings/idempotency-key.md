@@ -1,4 +1,4 @@
-# Idempotency Key -- on going
+# Idempotency Key
 
 ![](../assets/idempotency-activity-diagram.png)
 
