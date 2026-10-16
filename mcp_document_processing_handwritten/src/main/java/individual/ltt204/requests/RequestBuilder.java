@@ -3,12 +3,13 @@ package individual.ltt204.requests;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class RequestBuilder {
+    private ObjectMapper objectMapper = new ObjectMapper();
+
     public RequestBuilder setToolName() {
         return this;
     }
 
     public Request build(String requestJson) {
-        var objectMapper = new ObjectMapper();
 
         if (requestJson == null || requestJson.isEmpty()) {
             throw new IllegalArgumentException("Request JSON cannot be null or empty");
