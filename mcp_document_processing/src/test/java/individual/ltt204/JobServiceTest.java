@@ -31,6 +31,8 @@ import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
+import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
+import individual.ltt204.services.storage.methods.KeyValueStore;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
@@ -46,11 +48,13 @@ public class JobServiceTest {
     private CountDownLatch started;
     private CountDownLatch release;
     private AtomicInteger parserCalls;
+    private KeyValueStore<String, Job> jobStorage;
 
     @BeforeEach
     public void setUp() {
         parserCalls = new AtomicInteger(0);
-        jobStorageService = new JobStorageService();
+        jobStorage = new ConcurrentHashMapKeyValueStore<>();
+        jobStorageService = new JobStorageService(jobStorage);
         futureStorageService = new ActiveFutureStorageService();
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));

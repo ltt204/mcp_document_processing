@@ -2,10 +2,10 @@ package individual.ltt204.services.storage;
 
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 import individual.ltt204.entities.Job;
 import individual.ltt204.entities.JobStatus;
+import individual.ltt204.services.storage.methods.KeyValueStore;
 
 /**
  * JobStorageService
@@ -20,17 +20,20 @@ public class JobStorageService implements IStorageService<Job> {
         FINAL_STATES.add(JobStatus.CANCELLED);
         FINAL_STATES.add(JobStatus.TIMEOUT);
     }
-    private ConcurrentHashMap<String, Job> jobStorage = new ConcurrentHashMap<>();
+    private KeyValueStore<String, Job> jobStorage;
+
+    public JobStorageService(KeyValueStore<String, Job> keyValueStore) {
+        this.jobStorage = keyValueStore;
+    }
 
     @Override
     public void store(String key, Job value) {
-        jobStorage.compute(value.id().toString(), (k, v) -> value);
+        jobStorage.compute(key, value);
     }
 
     @Override
     public boolean checkAndUpdate(String key, Job value) {
-        Job saved = jobStorage.computeIfPresent(value.id().toString(),
-                (k, v) -> FINAL_STATES.contains(v.status()) ? v : value);
+        Job saved = jobStorage.compute(key, value, (v) -> FINAL_STATES.contains(v.status()));
 
         return saved == value;
     }

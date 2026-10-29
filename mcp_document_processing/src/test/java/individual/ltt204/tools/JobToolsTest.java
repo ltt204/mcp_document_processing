@@ -17,12 +17,13 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 
+import individual.ltt204.entities.Job;
 import individual.ltt204.services.job.JobService;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.JobStorageService;
+import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
+import individual.ltt204.services.storage.methods.KeyValueStore;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
@@ -33,10 +34,11 @@ public class JobToolsTest {
     private ActiveFutureStorageService futureStorageService;
     private ThreadPoolExecutor pool;
     private java.util.concurrent.ScheduledExecutorService scheduler;
+    private KeyValueStore<String, Job> jobStorage = new ConcurrentHashMapKeyValueStore<>();
 
     @BeforeEach
     public void setup() {
-        jobStorageService = new JobStorageService();
+        jobStorageService = new JobStorageService(jobStorage);
         futureStorageService = new ActiveFutureStorageService();
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
