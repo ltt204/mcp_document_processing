@@ -8,14 +8,22 @@ import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import individual.ltt204.services.storage.methods.KeyValueStore;
-import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
+import individual.ltt204.services.storage.methods.RedisKeyValueStore;
 import redis.clients.jedis.ConnectionPoolConfig;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.RedisClient;
 
-public class StoreConfig {
+public class StorageConfig {
     public static IStorageService<Job> getJobStorageService() {
-        KeyValueStore<String, Job> jobStorage = new ConcurrentHashMapKeyValueStore<>();
+        // KeyValueStore<String, Job> jobStorage = new
+        // ConcurrentHashMapKeyValueStore<>();
+        String redisHost = Config.getDotenv().get("REDIS_HOST");
+        int redisPort = Integer.parseInt(Config.getDotenv().get("REDIS_PORT"));
+        String redisPassword = Config.getDotenv().get("REDIS_PASSWORD");
+
+        KeyValueStore<String, Job> jobStorage = new RedisKeyValueStore<>(
+                getRedisClient(redisHost, redisPort, redisPassword), "jobs:");
+
         return new JobStorageService(jobStorage);
     }
 

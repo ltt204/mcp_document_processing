@@ -42,8 +42,8 @@ public class ConcurrentHashMapKeyValueStore<K, V> implements KeyValueStore<K, V>
     }
 
     @Override
-    public V remove(K key) {
-        return map.remove(key);
+    public void remove(K key) {
+        map.remove(key);
     }
 
     @Override

@@ -3,7 +3,7 @@ package individual.ltt204;
 import java.util.List;
 
 import individual.ltt204.config.Config;
-import individual.ltt204.config.StoreConfig;
+import individual.ltt204.config.StorageConfig;
 import individual.ltt204.services.job.JobService;
 import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.parsing.PDFParsingService;
@@ -25,10 +25,6 @@ public final class Main {
 
         var executor = Config.getJobExecutor();
         var scheduler = Config.getJobScheduler();
-        var redisClient = StoreConfig.getRedisClient(
-                dotenv.get("REDIS_HOST"),
-                Integer.parseInt(dotenv.get("REDIS_PORT")),
-                dotenv.get("REDIS_PASSWORD"));
 
         PDFParsingService pdfParsingService = new PDFParsingService();
         ParserTool pdfParserTool = new ParserTool("pdf_parser", "Parses a PDF file and extracts text",
@@ -53,8 +49,8 @@ public final class Main {
         toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
                 "Sleeps 10s", slowParser, List.of("slow"), 10_000));
 
-        JobService jobService = new JobService(StoreConfig.getJobStorageService(),
-                StoreConfig.getFutureActiveStorageService(),
+        JobService jobService = new JobService(StorageConfig.getJobStorageService(),
+                StorageConfig.getFutureActiveStorageService(),
                 executor, scheduler);
         JobTools jobTools = new JobTools(jobService);
 

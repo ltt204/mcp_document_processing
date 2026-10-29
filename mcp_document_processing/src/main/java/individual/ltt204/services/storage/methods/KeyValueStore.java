@@ -13,7 +13,7 @@ public interface KeyValueStore<K, V> {
 
     V putIfAbsent(K key, V value);
 
-    V remove(K key);
+    void remove(K key);
 
     int size();
 

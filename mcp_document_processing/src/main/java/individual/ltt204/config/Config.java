@@ -7,6 +7,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
@@ -36,4 +37,7 @@ public class Config {
         return new ObjectMapper();
     }
 
+    public static Dotenv getDotenv() {
+        return Dotenv.configure().ignoreIfMissing().load();
+    }
 }
