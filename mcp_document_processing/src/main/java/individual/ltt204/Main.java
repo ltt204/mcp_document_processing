@@ -1,12 +1,6 @@
 package individual.ltt204;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 import individual.ltt204.config.Config;
 import individual.ltt204.services.job.JobService;
@@ -16,6 +10,7 @@ import individual.ltt204.services.parsing.XLSXParsingService;
 import individual.ltt204.tools.JobTools;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
+import io.github.cdimascio.dotenv.Dotenv;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 
@@ -25,10 +20,14 @@ import io.modelcontextprotocol.server.McpSyncServer;
 public final class Main {
 
     public static McpSyncServer createMcpSyncServerSession() {
-        ExecutorService executor = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<Runnable>(2));
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        var executor = Config.getJobExecutor();
+        var scheduler = Config.getJobScheduler();
+        var redisClient = Config.getRedisClient(
+                dotenv.get("REDIS_HOST"),
+                Integer.parseInt(dotenv.get("REDIS_PORT")),
+                dotenv.get("REDIS_PASSWORD"));
 
         PDFParsingService pdfParsingService = new PDFParsingService();
         ParserTool pdfParserTool = new ParserTool("pdf_parser", "Parses a PDF file and extracts text",
