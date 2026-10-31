@@ -1,3 +1,5 @@
+package samples;
+
 class MyThread extends Thread {
     @Override
     public void run() {

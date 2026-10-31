@@ -1,3 +1,5 @@
+package samples;
+
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -113,7 +115,8 @@ public class LatchTestDemo {
         check(service.get(a).status == Status.IN_PROGRESS, "a is IN_PROGRESS");
         check(service.get(b).status == Status.IN_PROGRESS, "b is IN_PROGRESS");
 
-        // 2. Two more fill the queue. They cannot start: both threads are held at the gate.
+        // 2. Two more fill the queue. They cannot start: both threads are held at the
+        // gate.
         String c = service.submit("c.pdf");
         String d = service.submit("d.pdf");
         check(service.get(c).status == Status.PENDING, "c is PENDING");
