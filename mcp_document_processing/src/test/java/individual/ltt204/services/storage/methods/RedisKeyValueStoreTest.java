@@ -1,6 +1,7 @@
 package individual.ltt204.services.storage.methods;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -56,14 +57,14 @@ class RedisKeyValueStoreTest {
     void computeConditionUsesExistingValueAndUpdatesAtomically() {
         store.compute("job-1", "initial");
 
-        boolean result = store.computeIfPresent("job-1", "updated", existing -> existing.equals("initial"));
+        boolean result = store.computeIfPresent("job-1", "updated", existing -> !existing.equals("initial"));
 
-        assertEquals("initial", result);
-        assertEquals("initial", store.get("job-1"));
+        assertTrue(result);
+        assertEquals("updated", store.get("job-1"));
 
-        result = store.computeIfPresent("job-1", "updated", existing -> !existing.equals("initial"));
+        result = store.computeIfPresent("job-1", "updated", existing -> existing.equals("updated"));
 
-        assertEquals("updated", result);
+        assertFalse(result);
         assertEquals("updated", store.get("job-1"));
     }
 
@@ -86,11 +87,9 @@ class RedisKeyValueStoreTest {
             releaseBothThreads.countDown();
 
             List<Boolean> results = List.of(first.get(2, TimeUnit.SECONDS), second.get(2, TimeUnit.SECONDS));
-            String finalValue = store.get("job-1");
 
-            assertTrue(List.of("first", "second").contains(finalValue));
-            assertEquals(finalValue, results.get(0));
-            assertEquals(finalValue, results.get(1));
+            assertTrue(results.contains(Boolean.TRUE));
+            assertTrue(results.contains(Boolean.FALSE));
         } finally {
             releaseBothThreads.countDown();
             executor.shutdownNow();

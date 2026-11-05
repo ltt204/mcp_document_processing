@@ -25,7 +25,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     }
 
     @Override
-    public boolean computeIfPresent(K key, V value, Predicate<V> condition) {
+    public boolean computeIfPresent(K key, V value, Predicate<V> skipComputionPredicate) {
         for (int i = 0; i < MAX_RETRIES; i++) {
             try (AbstractTransaction atx = redisClient.transaction(false)) {
                 String redisKey = keyPrefix + key.toString();
@@ -33,27 +33,30 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
                 Response<String> currentValue = atx.get(redisKey);
 
-                if (currentValue.get() != null) {
-                    JavaType valueType = objectMapper.getTypeFactory().constructType(value.getClass());
-                    V existingValue = objectMapper.readValue(currentValue.get(), valueType);
+                if (currentValue.get() == null) {
+                    return false; // Key is not present, nothing to compute
+                }
+                JavaType valueType = objectMapper.getTypeFactory().constructType(value.getClass());
+                V existingValue = objectMapper.readValue(currentValue.get(), valueType);
 
-                    if (condition.test(existingValue)) {
-                        String newValueJson = objectMapper.writeValueAsString(value);
-
-                        atx.multi();
-                        atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
-                        List<Object> result = atx.exec();
-
-                        if (result == null) {
-                            // Transaction failed due to a watch condition, retry
-                            continue;
-                        }
-
-                        return true;
-                    }
+                if (skipComputionPredicate.test(existingValue)) {
+                    atx.unwatch();
+                    return false; // Condition not satisfied, nothing to compute
                 }
 
-                return false;
+                String newValueJson = objectMapper.writeValueAsString(value);
+
+                atx.multi();
+                atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                List<Object> result = atx.exec();
+
+                if (result == null) {
+                    // Transaction failed due to a watch condition, retry
+                    continue;
+                }
+
+                return true;
+
             } catch (Exception e) {
                 // Handle the exception (e.g., log it)
                 System.err.println("Error during computeIfPresent: " + e.getMessage());
@@ -68,6 +71,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
         }
 
         throw new RuntimeException("Failed to computeIfPresent after " + MAX_RETRIES + " retries");
+
     }
 
     @Override
