@@ -13,13 +13,13 @@ import individual.ltt204.services.storage.methods.KeyValueStore;
  */
 public class JobStorageService implements IStorageService<Job> {
     private static Set<JobStatus> FINAL_STATES = new HashSet<>();
-
     static {
         FINAL_STATES.add(JobStatus.COMPLETED);
         FINAL_STATES.add(JobStatus.ERROR);
         FINAL_STATES.add(JobStatus.CANCELLED);
         FINAL_STATES.add(JobStatus.TIMEOUT);
     }
+
     private KeyValueStore<String, Job> jobStorage;
 
     public JobStorageService(KeyValueStore<String, Job> keyValueStore) {
@@ -27,15 +27,10 @@ public class JobStorageService implements IStorageService<Job> {
     }
 
     @Override
-    public void store(String key, Job value) {
-        jobStorage.compute(key, value);
-    }
-
-    @Override
     public boolean checkAndUpdate(String key, Job value) {
-        Job saved = jobStorage.compute(key, value, (v) -> FINAL_STATES.contains(v.status()));
+        boolean isSaved = jobStorage.computeIfPresent(key, value, (v) -> !FINAL_STATES.contains(v.status()));
 
-        return saved == value;
+        return isSaved;
     }
 
     @Override
@@ -54,7 +49,7 @@ public class JobStorageService implements IStorageService<Job> {
     }
 
     @Override
-    public Job storeAndRetrieve(String key, Job value) {
-        return jobStorage.putIfAbsent(key, value);
+    public Job store(String key, Job value) {
+        return jobStorage.putIfAbsent(key, value) ? value : null;
     }
 }

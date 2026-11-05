@@ -7,8 +7,8 @@ public class ActiveFutureStorageService implements IStorageService<Future<?>> {
     private ConcurrentHashMap<String, Future<?>> futureStorage = new ConcurrentHashMap<>();
 
     @Override
-    public void store(String key, Future<?> value) {
-        futureStorage.put(key, value);
+    public Future<?> store(String key, Future<?> value) {
+        return futureStorage.put(key, value);
     }
 
     @Override
@@ -30,11 +30,6 @@ public class ActiveFutureStorageService implements IStorageService<Future<?>> {
     @Override
     public int getCount() {
         return futureStorage.size();
-    }
-
-    @Override
-    public Future<?> storeAndRetrieve(String key, Future<?> value) {
-        return futureStorage.putIfAbsent(key, value);
     }
 
 }

@@ -11,24 +11,36 @@ public class ConcurrentHashMapKeyValueStore<K, V> implements KeyValueStore<K, V>
     }
 
     @Override
-    public V compute(K key, V value) {
-        return map.compute(key, (k, v) -> value);
+    public boolean compute(K key, V value) {
+        try {
+            return map.compute(key, (k, v) -> value) != null;
+        } catch (NullPointerException e) {
+            return false;
+        }
     }
 
     @Override
-    public V compute(K key, V value, Predicate<V> condition) {
-        return map.compute(key, (currentKey, existingValue) -> {
-            if (existingValue == null) {
-                return null;
-            }
+    public boolean computeIfPresent(K key, V value, Predicate<V> condition) {
+        try {
+            return map.compute(key, (currentKey, existingValue) -> {
+                if (existingValue == null) {
+                    return null;
+                }
 
-            return condition.test(existingValue) ? existingValue : value;
-        });
+                return condition.test(existingValue) ? existingValue : value;
+            }) != null;
+        } catch (NullPointerException e) {
+            return false;
+        }
     }
 
     @Override
-    public V computeIfPresent(K key, V value) {
-        return map.computeIfPresent(key, (k, v) -> value);
+    public boolean computeIfPresent(K key, V value) {
+        try {
+            return map.computeIfPresent(key, (k, v) -> value) != null;
+        } catch (NullPointerException e) {
+            return false;
+        }
     }
 
     @Override
@@ -37,8 +49,12 @@ public class ConcurrentHashMapKeyValueStore<K, V> implements KeyValueStore<K, V>
     }
 
     @Override
-    public V putIfAbsent(K key, V value) {
-        return map.putIfAbsent(key, value);
+    public boolean putIfAbsent(K key, V value) {
+        try {
+            return map.putIfAbsent(key, value) == null;
+        } catch (NullPointerException e) {
+            return false;
+        }
     }
 
     @Override

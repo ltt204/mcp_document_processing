@@ -1,11 +1,14 @@
 package individual.ltt204.services.storage.methods;
 
-import java.util.Objects;
 import java.util.function.Predicate;
+import java.util.List;
 
 import individual.ltt204.config.Config;
 import redis.clients.jedis.AbstractTransaction;
 import redis.clients.jedis.RedisClient;
+import redis.clients.jedis.Response;
+import redis.clients.jedis.params.SetParams;
+import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 
 public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
@@ -22,112 +25,208 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     }
 
     @Override
-    public V compute(K key, V value) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(value, "value");
-        redisClient.set(field(key), encode(value));
-        return value;
+    public boolean computeIfPresent(K key, V value, Predicate<V> condition) {
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            try (AbstractTransaction atx = redisClient.transaction(false)) {
+                String redisKey = keyPrefix + key.toString();
+                atx.watch(redisKey);
+
+                Response<String> currentValue = atx.get(redisKey);
+
+                if (currentValue.get() != null) {
+                    JavaType valueType = objectMapper.getTypeFactory().constructType(value.getClass());
+                    V existingValue = objectMapper.readValue(currentValue.get(), valueType);
+
+                    if (condition.test(existingValue)) {
+                        String newValueJson = objectMapper.writeValueAsString(value);
+
+                        atx.multi();
+                        atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                        List<Object> result = atx.exec();
+
+                        if (result == null) {
+                            // Transaction failed due to a watch condition, retry
+                            continue;
+                        }
+
+                        return true;
+                    }
+                }
+
+                return false;
+            } catch (Exception e) {
+                // Handle the exception (e.g., log it)
+                System.err.println("Error during computeIfPresent: " + e.getMessage());
+                // Optionally, you can add a small delay before retrying
+                try {
+                    Thread.sleep(100); // Sleep for 100 milliseconds before retrying
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt(); // Restore interrupted status
+                    throw new RuntimeException("Thread interrupted during retry", ie);
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to computeIfPresent after " + MAX_RETRIES + " retries");
     }
 
     @Override
-    public V compute(K key, V value, Predicate<V> condition) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(value, "value");
-        Objects.requireNonNull(condition, "condition");
+    public boolean computeIfPresent(K key, V value) {
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            try (AbstractTransaction atx = redisClient.transaction(false)) {
+                String redisKey = keyPrefix + key.toString();
+                atx.watch(redisKey);
 
-        return computeWithCas(key, value, condition, MAX_RETRIES);
+                Response<String> currentValue = atx.get(redisKey);
+
+                if (currentValue.get() != null) {
+                    String newValueJson = objectMapper.writeValueAsString(value);
+
+                    atx.multi();
+                    atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                    List<Object> result = atx.exec();
+
+                    if (result == null) {
+                        // Transaction failed due to a watch condition, retry
+                        continue;
+                    }
+
+                    return true;
+                }
+
+                return false;
+            } catch (Exception e) {
+                // Handle the exception (e.g., log it)
+                System.err.println("Error during computeIfPresent: " + e.getMessage());
+                // Optionally, you can add a small delay before retrying
+                try {
+                    Thread.sleep(100); // Sleep for 100 milliseconds before retrying
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt(); // Restore interrupted status
+                    throw new RuntimeException("Thread interrupted during retry", ie);
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to computeIfPresent after " + MAX_RETRIES + " retries");
     }
 
     @Override
-    public V computeIfPresent(K key, V value) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(value, "value");
+    public boolean compute(K key, V value) {
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            try (AbstractTransaction atx = redisClient.transaction(false)) {
+                String redisKey = keyPrefix + key.toString();
+                atx.watch(redisKey);
 
-        return computeWithCas(key, value, ignored -> false, MAX_RETRIES);
+                String newValueJson = objectMapper.writeValueAsString(value);
+
+                atx.multi();
+                atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                List<Object> result = atx.exec();
+
+                if (result == null) {
+                    // Transaction failed due to a watch condition, retry
+                    continue;
+                }
+
+                return true;
+            } catch (Exception e) {
+                // Handle the exception (e.g., log it)
+                System.err.println("Error during compute: " + e.getMessage());
+                // Optionally, you can add a small delay before retrying
+                try {
+                    Thread.sleep(100); // Sleep for 100 milliseconds before retrying
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt(); // Restore interrupted status
+                    throw new RuntimeException("Thread interrupted during retry", ie);
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to compute after " + MAX_RETRIES + " retries");
     }
 
     @Override
     public V get(K key) {
-        Objects.requireNonNull(key, "key");
-        String encoded = redisClient.get(field(key));
-        if (encoded == null) {
-            return null;
+        try {
+            String redisKey = keyPrefix + key.toString();
+            String valueJson = redisClient.get(redisKey);
+
+            if (valueJson != null) {
+                JavaType valueType = objectMapper.getTypeFactory().constructType(Object.class);
+                return objectMapper.readValue(valueJson, valueType);
+            }
+        } catch (Exception e) {
+            // Handle the exception (e.g., log it)
+            System.err.println("Error during get: " + e.getMessage());
         }
 
-        return decode(encoded);
+        return null;
     }
 
     @Override
-    public V putIfAbsent(K key, V value) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(value, "value");
+    public boolean putIfAbsent(K key, V value) {
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            try (AbstractTransaction atx = redisClient.transaction(false)) {
 
-        long inserted = redisClient.setnx(field(key), encode(value));
-        return inserted == 1 ? null : get(key);
+                String redisKey = keyPrefix + key.toString();
+                atx.watch(redisKey);
+
+                Response<String> currentValue = atx.get(redisKey);
+
+                if (currentValue.get() != null) {
+                    return false; // Key already exists, do not overwrite
+                }
+
+                String newValueJson = objectMapper.writeValueAsString(value);
+
+                atx.multi();
+                atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                List<Object> results = atx.exec();
+
+                if (results == null) {
+                    // Transaction failed due to a watch condition, retry
+                    continue;
+                }
+
+                return true;
+            } catch (Exception e) {
+                // Handle the exception (e.g., log it)
+                System.err.println("Error during putIfAbsent: " + e.getMessage());
+                // Optionally, you can add a small delay before retrying
+                try {
+                    Thread.sleep(100); // Sleep for 100 milliseconds before retrying
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt(); // Restore interrupted status
+                    throw new RuntimeException("Thread interrupted during retry", ie);
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to putIfAbsent after " + MAX_RETRIES + " retries");
     }
 
     @Override
     public void remove(K key) {
-        Objects.requireNonNull(key, "key");
-        String redisKey = field(key);
-        redisClient.getDel(redisKey);
+        try {
+            String redisKey = keyPrefix + key.toString();
+            redisClient.del(redisKey);
+        } catch (Exception e) {
+            // Handle the exception (e.g., log it)
+            System.err.println("Error during remove: " + e.getMessage());
+        }
     }
 
     @Override
     public int size() {
-        throw new UnsupportedOperationException("size is not implemented for top-level Redis keys");
-    }
-
-    private String field(K key) {
-        return keyPrefix + String.valueOf(key);
-    }
-
-    private V computeWithCas(K key, V value, Predicate<V> condition, int maxRetries) {
-        String redisKey = field(key);
-
-        for (int attempt = 0; attempt < maxRetries; attempt++) {
-            try (AbstractTransaction transaction = redisClient.transaction(false)) {
-                transaction.watch(redisKey);
-                String encoded = transaction.get(redisKey).get();
-                V existing = encoded == null ? null : decode(encoded);
-
-                if (condition != null && condition.test(existing)) {
-                    transaction.unwatch();
-                    return existing;
-                }
-
-                transaction.multi();
-                transaction.set(redisKey, encode(value));
-                transaction.expire(redisKey, DEFAULT_EXPIRATION_SECONDS);
-                if (transaction.exec() != null) {
-                    return value;
-                }
-            }
-        }
-
-        throw new IllegalStateException("Could not update Redis key after " + maxRetries + " attempts");
-    }
-
-    private String encode(V value) {
         try {
-            return value.getClass().getName() + "\n" + objectMapper.writeValueAsString(value);
-        } catch (Exception exception) {
-            throw new IllegalArgumentException("Unable to serialize value", exception);
+            String pattern = keyPrefix + "*";
+            return redisClient.keys(pattern).size();
+        } catch (Exception e) {
+            // Handle the exception (e.g., log it)
+            System.err.println("Error during size retrieval: " + e.getMessage());
         }
+        return 0;
     }
 
-    @SuppressWarnings("unchecked")
-    private V decode(String encoded) {
-        try {
-            int separator = encoded.indexOf('\n');
-            if (separator <= 0) {
-                throw new IllegalArgumentException("Invalid stored value");
-            }
-
-            Class<?> valueType = Class.forName(encoded.substring(0, separator));
-            return (V) objectMapper.readValue(encoded.substring(separator + 1), valueType);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to deserialize value", exception);
-        }
-    }
 }
