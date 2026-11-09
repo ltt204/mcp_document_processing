@@ -32,7 +32,7 @@ class RedisKeyValueStoreTest {
             Assumptions.assumeTrue("PONG".equals(redisClient.ping()),
                     "Redis is not available at the configured redis.url");
             keyPrefix = "test:redis-store:" + UUID.randomUUID() + ":";
-            store = new RedisKeyValueStore<>(redisClient, keyPrefix);
+            store = new RedisKeyValueStore<>(redisClient, keyPrefix, String.class);
         } catch (RuntimeException exception) {
             redisClient.close();
             redisClient = null;

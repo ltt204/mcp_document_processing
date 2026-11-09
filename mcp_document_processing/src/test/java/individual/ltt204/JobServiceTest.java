@@ -56,6 +56,7 @@ public class JobServiceTest {
         jobStorage = new ConcurrentHashMapKeyValueStore<>();
         jobStorageService = new JobStorageService(jobStorage);
         futureStorageService = new ActiveFutureStorageService();
+
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
         scheduler = Executors.newSingleThreadScheduledExecutor();

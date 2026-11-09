@@ -46,7 +46,7 @@ class KeyValueStoreContractTest {
                         null)),
                 Arguments.of(new StoreFixture(
                         "Redis",
-                        new RedisKeyValueStore<String, String>(redisClient, keyPrefix),
+                        new RedisKeyValueStore<String, String>(redisClient, keyPrefix, String.class),
                         redisClient,
                         keyPrefix)));
     }

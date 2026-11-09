@@ -1,14 +1,13 @@
 package individual.ltt204.services.storage.methods;
 
-import java.util.function.Predicate;
 import java.util.List;
+import java.util.function.Predicate;
 
 import individual.ltt204.config.Config;
 import redis.clients.jedis.AbstractTransaction;
 import redis.clients.jedis.RedisClient;
 import redis.clients.jedis.Response;
 import redis.clients.jedis.params.SetParams;
-import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 
 public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
@@ -18,10 +17,12 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     private final RedisClient redisClient;
     private final String keyPrefix;
     private final ObjectMapper objectMapper = Config.getObjectMapper();
+    private final Class<V> valueType;
 
-    public RedisKeyValueStore(RedisClient redisClient, String keyPrefix) {
+    public RedisKeyValueStore(RedisClient redisClient, String keyPrefix, Class<V> valueType) {
         this.redisClient = redisClient;
         this.keyPrefix = keyPrefix;
+        this.valueType = valueType;
     }
 
     @Override
@@ -36,7 +37,6 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 if (currentValue.get() == null) {
                     return false; // Key is not present, nothing to compute
                 }
-                JavaType valueType = objectMapper.getTypeFactory().constructType(value.getClass());
                 V existingValue = objectMapper.readValue(currentValue.get(), valueType);
 
                 if (skipComputionPredicate.test(existingValue)) {
@@ -157,7 +157,6 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             String valueJson = redisClient.get(redisKey);
 
             if (valueJson != null) {
-                JavaType valueType = objectMapper.getTypeFactory().constructType(Object.class);
                 return objectMapper.readValue(valueJson, valueType);
             }
         } catch (Exception e) {

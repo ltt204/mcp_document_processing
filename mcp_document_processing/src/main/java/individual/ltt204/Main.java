@@ -11,7 +11,6 @@ import individual.ltt204.services.parsing.XLSXParsingService;
 import individual.ltt204.tools.JobTools;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
-import io.github.cdimascio.dotenv.Dotenv;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 
@@ -21,8 +20,6 @@ import io.modelcontextprotocol.server.McpSyncServer;
 public final class Main {
 
     public static McpSyncServer createMcpSyncServerSession() {
-        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
-
         var executor = Config.getJobExecutor();
         var scheduler = Config.getJobScheduler();
 

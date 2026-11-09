@@ -22,7 +22,7 @@ public class StorageConfig {
         String redisPassword = Config.getDotenv().get("REDIS_PASSWORD");
 
         KeyValueStore<String, Job> jobStorage = new RedisKeyValueStore<>(
-                getRedisClient(redisHost, redisPort, redisPassword), "jobs:");
+                getRedisClient(redisHost, redisPort, redisPassword), "jobs:", Job.class);
 
         return new JobStorageService(jobStorage);
     }
