@@ -28,7 +28,7 @@ public class JobStorageService implements IStorageService<Job> {
 
     @Override
     public boolean checkAndUpdate(String key, Job value) {
-        boolean isSaved = jobStorage.computeIfPresent(key, value, (v) -> !FINAL_STATES.contains(v.status()));
+        boolean isSaved = jobStorage.computeIfPresent(key, value, (v) -> FINAL_STATES.contains(v.status()));
 
         return isSaved;
     }

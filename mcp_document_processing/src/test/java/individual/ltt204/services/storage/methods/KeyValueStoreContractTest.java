@@ -2,7 +2,6 @@ package individual.ltt204.services.storage.methods;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -29,6 +28,7 @@ class KeyValueStoreContractTest {
     static Stream<Arguments> stores() {
         RedisClient redisClient = RedisClient.create(
                 System.getProperty("redis.url", "redis://:ltt204@localhost:6379"));
+
         try {
             Assumptions.assumeTrue("PONG".equals(redisClient.ping()),
                     "Redis is not available at the configured redis.url");
