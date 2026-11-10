@@ -1,14 +1,9 @@
 package individual.ltt204;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 import individual.ltt204.config.Config;
+import individual.ltt204.config.StorageConfig;
 import individual.ltt204.services.job.JobService;
 import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.parsing.PDFParsingService;
@@ -25,10 +20,8 @@ import io.modelcontextprotocol.server.McpSyncServer;
 public final class Main {
 
     public static McpSyncServer createMcpSyncServerSession() {
-        ExecutorService executor = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<Runnable>(2));
-
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        var executor = Config.getJobExecutor();
+        var scheduler = Config.getJobScheduler();
 
         PDFParsingService pdfParsingService = new PDFParsingService();
         ParserTool pdfParserTool = new ParserTool("pdf_parser", "Parses a PDF file and extracts text",
@@ -53,7 +46,8 @@ public final class Main {
         toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
                 "Sleeps 10s", slowParser, List.of("slow"), 10_000));
 
-        JobService jobService = new JobService(Config.getJobStorageService(), Config.getFutureActiveStorageService(),
+        JobService jobService = new JobService(StorageConfig.getJobStorageService(),
+                StorageConfig.getFutureActiveStorageService(),
                 executor, scheduler);
         JobTools jobTools = new JobTools(jobService);
 

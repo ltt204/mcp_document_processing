@@ -1,0 +1,450 @@
+package individual.ltt204;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.net.URISyntaxException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import individual.ltt204.entities.Job;
+import individual.ltt204.entities.JobStatus;
+import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.parsing.IParsingService;
+import individual.ltt204.services.storage.ActiveFutureStorageService;
+import individual.ltt204.services.storage.IStorageService;
+import individual.ltt204.services.storage.JobStorageService;
+import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
+import individual.ltt204.services.storage.methods.KeyValueStore;
+import individual.ltt204.services.storage.methods.RedisKeyValueStore;
+import individual.ltt204.tools.ParserTool;
+import individual.ltt204.tools.ToolRegistry;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import redis.clients.jedis.RedisClient;
+
+public class JobServiceRedisTest {
+    private IStorageService<Job> jobStorageService;
+    private IStorageService<Future<?>> futureStorageService;
+    private ExecutorService pool;
+    private ScheduledExecutorService scheduler;
+    private IParsingService slowParsingService;
+    private JobService jobService;
+    private ToolRegistry toolRegistry;
+    private CountDownLatch started;
+    private CountDownLatch release;
+    private AtomicInteger parserCalls;
+    private KeyValueStore<String, Job> jobStorage;
+    private RedisClient redisClient;
+    private String jobKeyPrefix;
+
+    @BeforeEach
+    public void setUp() {
+        redisClient = RedisClient.create(
+                System.getProperty("redis.url", "redis://:ltt204@localhost:6379"));
+        try {
+            Assumptions.assumeTrue("PONG".equals(redisClient.ping()),
+                    "Redis is not available at the configured redis.url");
+        } catch (RuntimeException exception) {
+            redisClient.close();
+            redisClient = null;
+            Assumptions.abort("Redis is not available at the configured redis.url");
+        }
+
+        jobKeyPrefix = "test:key:" + UUID.randomUUID() + ":";
+        parserCalls = new AtomicInteger(0);
+        jobStorage = new RedisKeyValueStore<>(redisClient, jobKeyPrefix, Job.class, 3, 3600);
+        jobStorageService = new JobStorageService(jobStorage);
+
+        futureStorageService = new ActiveFutureStorageService(new ConcurrentHashMapKeyValueStore<>());
+
+        pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>(2));
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        jobService = new JobService(jobStorageService, futureStorageService, pool, scheduler);
+
+        started = new CountDownLatch(2);
+        release = new CountDownLatch(1);
+        slowParsingService = file -> {
+            parserCalls.incrementAndGet();
+
+            started.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                throw e;
+            }
+
+            return "slept";
+        };
+
+        toolRegistry = ToolRegistry.getInstance();
+        toolRegistry.registerTool("slow_parser", new ParserTool("slow_parser",
+                "Sleeps 10s", slowParsingService, List.of("slow"), 3_000));
+    }
+
+    @Test
+    public void testSubmitJobs_SlowReturn_RejectedWhenOutOfPool_WithLatch() throws InterruptedException {
+        String jobId1 = jobService.submitJob(testResource("file1.slow"));
+        String jobId2 = jobService.submitJob(testResource("file2.slow"));
+
+        assertTrue(started.await(1, TimeUnit.SECONDS), "two workers reached parse()");
+        assertEquals(2, jobService.getJobCount(), "There should be 2 jobs in the queue");
+        assertEquals(JobStatus.IN_PROGRESS, jobService.retrieveJob(jobId1).status(),
+                "Job 1 should be in progress");
+        assertEquals(JobStatus.IN_PROGRESS, jobService.retrieveJob(jobId2).status(),
+                "Job 2 should be in progress");
+
+        String jobId3 = jobService.submitJob(testResource("file3.slow"));
+        String jobId4 = jobService.submitJob(testResource("file4.slow"));
+        assertEquals(4, jobService.getJobCount(), "There should be 4 jobs in the queue");
+        assertEquals(JobStatus.PENDING, jobService.retrieveJob(jobId3).status(),
+                "Job 3 should be pending");
+        assertEquals(JobStatus.PENDING, jobService.retrieveJob(jobId4).status(),
+                "Job 4 should be pending");
+
+        assertThrows(IllegalStateException.class, () -> jobService.submitJob(testResource("file5.slow")));
+
+        release.countDown();
+        pool.shutdown();
+        assertTrue(pool.awaitTermination(1, TimeUnit.SECONDS));
+
+        for (String jobId : List.of(jobId1, jobId2, jobId3, jobId4)) {
+            assertEquals(JobStatus.COMPLETED, jobService.retrieveJob(jobId).status(),
+                    "Job " + jobId + " should be completed");
+        }
+    }
+
+    @Test
+    public void testCancelJobs_SlowReturn_Cancelled() throws InterruptedException {
+        String jobId1 = jobService.submitJob(testResource("file1.slow"));
+        String jobId2 = jobService.submitJob(testResource("file2.slow"));
+
+        assertTrue(started.await(1, TimeUnit.SECONDS), "two workers reached parse()");
+        assertEquals(2, jobService.getJobCount(), "There should be 2 jobs in the queue");
+        assertEquals(2, futureStorageService.getCount(), "There should be 2 active futures in the queue");
+
+        jobService.cancelJob(jobId1);
+        jobService.cancelJob(jobId2);
+
+        release.countDown();
+        pool.shutdown();
+        assertTrue(pool.awaitTermination(1, TimeUnit.SECONDS));
+
+        assertEquals(0, futureStorageService.getCount(),
+                "There should be 0 active futures in the queue after cancellation");
+
+        for (String jobId : List.of(jobId1, jobId2)) {
+            assertEquals(JobStatus.CANCELLED, jobService.retrieveJob(jobId).status(),
+                    "Job " + jobId + " should be cancelled");
+        }
+    }
+
+    @Test
+    public void testPutIfAbsent_WhenKeyIsMissing_StoresJob() {
+        Job job = newJob();
+
+        boolean stored = jobStorage.putIfAbsent("put-if-absent", job);
+
+        assertTrue(stored);
+        assertEquals(job, jobStorage.get("put-if-absent"));
+    }
+
+    @Test
+    public void testPutIfAbsent_WhenKeyExists_DoesNotOverwriteJob() {
+        Job originalJob = newJob();
+        Job replacementJob = newJob();
+
+        assertTrue(jobStorage.putIfAbsent("put-if-absent", originalJob));
+        boolean stored = jobStorage.putIfAbsent("put-if-absent", replacementJob);
+
+        assertFalse(stored);
+        assertEquals(originalJob, jobStorage.get("put-if-absent"));
+    }
+
+    @Test
+    public void testPutIfAbsent_ConcurrentWriters_OnlyOneStoresJob() throws Exception {
+        int writerCount = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(writerCount);
+        CountDownLatch ready = new CountDownLatch(writerCount);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            List<Future<Boolean>> results = java.util.stream.IntStream.range(0, writerCount)
+                    .mapToObj(index -> executor.submit(() -> {
+                        ready.countDown();
+                        assertTrue(start.await(1, TimeUnit.SECONDS));
+                        return jobStorage.putIfAbsent("concurrent-put", newJob());
+                    }))
+                    .toList();
+
+            assertTrue(ready.await(1, TimeUnit.SECONDS));
+            start.countDown();
+
+            long successfulWrites = results.stream()
+                    .filter(result -> getResult(result))
+                    .count();
+
+            assertEquals(1, successfulWrites);
+            assertEquals(1, jobStorage.size());
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    public void testPutIfAbsent_ConcurrentWriters_WhenKeyExists_AllFail() throws Exception {
+        int writerCount = 8;
+        assertTrue(jobStorage.putIfAbsent("concurrent-existing", newJob()));
+
+        ExecutorService executor = Executors.newFixedThreadPool(writerCount);
+        CountDownLatch ready = new CountDownLatch(writerCount);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            List<Future<Boolean>> results = java.util.stream.IntStream.range(0, writerCount)
+                    .mapToObj(index -> executor.submit(() -> {
+                        ready.countDown();
+                        assertTrue(start.await(1, TimeUnit.SECONDS));
+                        return jobStorage.putIfAbsent("concurrent-existing", newJob());
+                    }))
+                    .toList();
+
+            assertTrue(ready.await(1, TimeUnit.SECONDS));
+            start.countDown();
+
+            assertTrue(results.stream().noneMatch(result -> getResult(result)));
+            assertEquals(1, jobStorage.size());
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private Job awaitJobStatus(String jobId, JobStatus expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+
+        while (System.nanoTime() < deadline) {
+            Job job = jobService.retrieveJob(jobId);
+
+            if (job != null && job.status() == expected) {
+                return job;
+            }
+
+            Thread.sleep(10);
+        }
+
+        Job actual = jobService.retrieveJob(jobId);
+        throw new AssertionError(
+                "Timed out waiting for " + expected + ", actual status: "
+                        + (actual == null ? "missing" : actual.status()));
+    }
+
+    @Test
+    public void testFastJobCompletesAndFutureIsCleanedUp() throws Exception {
+        CountDownLatch parserStarted = new CountDownLatch(1);
+        CountDownLatch releaseParser = new CountDownLatch(1);
+
+        IParsingService fastParsingService = file -> {
+            parserStarted.countDown();
+            releaseParser.await();
+            return "fast";
+        };
+
+        toolRegistry.registerTool(
+                "fast_parser",
+                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast"), 3_000));
+
+        String jobId = jobService.submitJob(testResource("file1.fast"));
+
+        assertTrue(parserStarted.await(1, TimeUnit.SECONDS));
+        releaseParser.countDown();
+
+        Job job = awaitJobStatus(jobId, JobStatus.COMPLETED);
+
+        assertEquals("fast", job.result().get("result"));
+        assertEquals(0, futureStorageService.getCount());
+    }
+
+    @Test
+    public void testCancelJob_CancellingACompletedJob_ReturnsError() throws Exception {
+        CountDownLatch parserStarted = new CountDownLatch(1);
+        CountDownLatch releaseParser = new CountDownLatch(1);
+
+        IParsingService fastParsingService = file -> {
+            parserStarted.countDown();
+            releaseParser.await();
+            return "fast";
+        };
+
+        toolRegistry.registerTool(
+                "fast_parser",
+                new ParserTool("fast_parser", "Returns fast", fastParsingService, List.of("fast"), 3_000));
+
+        String jobId = jobService.submitJob(testResource("file1.fast"));
+
+        assertTrue(parserStarted.await(1, TimeUnit.SECONDS));
+        releaseParser.countDown();
+
+        Job job = awaitJobStatus(jobId, JobStatus.COMPLETED);
+
+        assertEquals("fast", job.result().get("result"));
+        assertEquals(0, futureStorageService.getCount());
+
+        var result = jobService.cancelJob(jobId);
+        assertTrue(result.isError());
+        assertTrue(((TextContent) result.content().get(0)).text().contains("already in a final state"));
+    }
+
+    @Test
+    public void testCancelJob_CancellingAPendingJob_ReturnsError() throws Exception {
+        CountDownLatch parserStarted = new CountDownLatch(1);
+        CountDownLatch releaseParser = new CountDownLatch(1);
+
+        IParsingService pendingParsingService = file -> {
+            parserCalls.incrementAndGet();
+            parserStarted.countDown();
+            releaseParser.await();
+            return "slow";
+        };
+
+        toolRegistry.registerTool(
+                "slow_parser",
+                new ParserTool("slow_parser", "Returns slow", pendingParsingService, List.of("slow"), 3_000));
+
+        String jobId1 = jobService.submitJob(testResource("file1.slow"));
+        String jobId2 = jobService.submitJob(testResource("file2.slow"));
+
+        assertTrue(parserStarted.await(1, TimeUnit.SECONDS));
+
+        String jobId3 = jobService.submitJob(testResource("file3.slow"));
+        assertEquals(JobStatus.PENDING, jobService.retrieveJob(jobId3).status(),
+                "Job 3 should be pending");
+
+        var result = jobService.cancelJob(jobId3);
+
+        assertFalse(result.isError());
+        assertTrue(((TextContent) result.content().get(0)).text().contains("successfully"));
+
+        releaseParser.countDown();
+        pool.shutdown();
+        assertTrue(pool.awaitTermination(1, TimeUnit.SECONDS));
+
+        Job job1 = awaitJobStatus(jobId1, JobStatus.COMPLETED);
+        Job job2 = awaitJobStatus(jobId2, JobStatus.COMPLETED);
+        assertEquals("slow", job1.result().get("result"));
+        assertEquals("slow", job2.result().get("result"));
+
+        assertEquals(JobStatus.CANCELLED, jobService.retrieveJob(jobId3).status(),
+                "Job 3 should be cancelled");
+        assertEquals(0, futureStorageService.getCount());
+        assertEquals(2, parserCalls.get());
+    }
+
+    @Test
+    public void testCancelJob_CancellingATimeoutJob_ReturnsError() throws Exception {
+        String jobId = jobService.submitJob(testResource("file1.slow"));
+
+        Job job = awaitJobStatus(jobId, JobStatus.IN_PROGRESS);
+        assertEquals(JobStatus.IN_PROGRESS, job.status(), "Job should be in progress");
+
+        Thread.sleep(4_000);
+
+        job = awaitJobStatus(jobId, JobStatus.TIMEOUT);
+        assertEquals(JobStatus.TIMEOUT, job.status(), "Job should be in timeout state");
+
+        var result = jobService.cancelJob(jobId);
+
+        assertTrue(result.isError());
+        assertTrue(((TextContent) result.content().get(0)).text().contains("already in a final state"));
+    }
+
+    @Test
+    public void testTimeoutJob_CompletesAfterTimeout_ReturnsTimeout() throws Exception {
+        AtomicBoolean keepParsing = new AtomicBoolean(true);
+        IParsingService timeoutParsingService = file -> {
+            while (keepParsing.get()) {
+            }
+            return "timeout_result";
+        };
+
+        toolRegistry.registerTool(
+                "slow_parser",
+                new ParserTool("slow_parser", "Returns slow", timeoutParsingService, List.of("timeout"), 50));
+
+        String jobId = jobService.submitJob(testResource("file1.timeout"));
+
+        Job job = awaitJobStatus(jobId, JobStatus.IN_PROGRESS);
+        assertEquals(JobStatus.IN_PROGRESS, job.status(), "Job should be in progress");
+
+        job = awaitJobStatus(jobId, JobStatus.TIMEOUT);
+        assertEquals(JobStatus.TIMEOUT, job.status(), "Job should be in timeout state");
+        keepParsing.set(false);
+
+        job = awaitJobStatus(jobId, JobStatus.TIMEOUT);
+        assertEquals(JobStatus.TIMEOUT, job.status(), "Job should still be in timeout state");
+        assertNull(job.result().get("result"),
+                "Job result should be null since it timed out, with the final state it cannot be updated even the parsing is done");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        release.countDown();
+        pool.shutdownNow();
+        scheduler.shutdownNow();
+        toolRegistry.clear();
+
+        if (redisClient != null) {
+            if (jobKeyPrefix != null) {
+                redisClient.keys(jobKeyPrefix + "*").forEach(redisClient::del);
+            }
+            redisClient.close();
+        }
+    }
+
+    private String testResource(String fileName) {
+        try {
+            return Path.of(getClass().getResource("/" + fileName).toURI()).toString();
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("Invalid test resource: " + fileName, e);
+        }
+    }
+
+    private Job newJob() {
+        return new Job(
+                UUID.randomUUID(),
+                Map.of("filePath", "test.fast"),
+                null,
+                JobStatus.PENDING,
+                "Test job",
+                "Test job for putIfAbsent");
+    }
+
+    private boolean getResult(Future<Boolean> result) {
+        try {
+            return result.get(2, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            throw new AssertionError("Concurrent putIfAbsent operation failed", exception);
+        }
+    }
+}

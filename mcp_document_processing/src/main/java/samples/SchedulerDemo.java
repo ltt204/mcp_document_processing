@@ -1,3 +1,5 @@
+package samples;
+
 import java.lang.management.ManagementFactory;
 import java.util.Comparator;
 import java.util.PriorityQueue;
