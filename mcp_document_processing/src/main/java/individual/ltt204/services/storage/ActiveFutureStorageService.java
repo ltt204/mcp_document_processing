@@ -7,6 +7,10 @@ import individual.ltt204.services.storage.methods.KeyValueStore;
 public class ActiveFutureStorageService implements IStorageService<Future<?>> {
     private KeyValueStore<String, Future<?>> futureStorage;
 
+    public ActiveFutureStorageService(KeyValueStore<String, Future<?>> futureStorage) {
+        this.futureStorage = futureStorage;
+    }
+
     @Override
     public Future<?> store(String key, Future<?> value) {
         return futureStorage.putIfAbsent(key, value) ? value : null;

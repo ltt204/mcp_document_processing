@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.URISyntaxException;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -15,18 +18,22 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import individual.ltt204.entities.Job;
 import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.parsing.PDFParsingService;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
 import individual.ltt204.services.storage.methods.KeyValueStore;
+import individual.ltt204.services.storage.methods.RedisKeyValueStore;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import redis.clients.jedis.RedisClient;
 
 public class JobToolsTest {
     private JobService jobService;
@@ -38,8 +45,31 @@ public class JobToolsTest {
 
     @BeforeEach
     public void setup() {
+        ToolRegistry.getInstance().clear();
+        ToolRegistry.getInstance().registerTool(
+                "pdf_parser",
+                new ParserTool(
+                        "pdf_parser",
+                        "Parses a PDF file",
+                        new PDFParsingService(),
+                        List.of("pdf"),
+                        3_000));
+
+        RedisClient redisClient = RedisClient.create(
+                System.getProperty("redis.url", "redis://:ltt204@localhost:6379"));
+        try {
+            Assumptions.assumeTrue("PONG".equals(redisClient.ping()),
+                    "Redis is not available at the configured redis.url");
+        } catch (RuntimeException exception) {
+            redisClient.close();
+            redisClient = null;
+            Assumptions.abort("Redis is not available at the configured redis.url");
+        }
+
         jobStorageService = new JobStorageService(jobStorage);
-        futureStorageService = new ActiveFutureStorageService();
+
+        futureStorageService = new ActiveFutureStorageService(new RedisKeyValueStore<>(redisClient,
+                "test:job-service:" + java.util.UUID.randomUUID() + ":", null, 0, 60));
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
         scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -52,12 +82,13 @@ public class JobToolsTest {
         JobTools jobTools = new JobTools(jobService);
 
         // Test submitting a job with a new call ID
-        String filePath1 = "/path/to/file1.pdf";
+        String filePath1 = testResource("sample.pdf");
         String callId1 = "call1";
 
         var result1 = jobTools.getSubmitToolJob().callHandler()
                 .apply(null,
-                        CallToolRequest.builder("submit_tool").arguments(Map.of("path", filePath1, "callId", callId1))
+                        CallToolRequest.builder("submit_tool")
+                                .arguments(Map.of("path", filePath1, "callId", callId1))
                                 .build());
         assertNotNull(result1);
 
@@ -88,7 +119,7 @@ public class JobToolsTest {
         JobTools jobTools = new JobTools(jobService);
 
         // Test submitting a job without a call ID
-        String filePath = "/path/to/file.pdf";
+        String filePath = testResource("sample.pdf");
 
         var result = jobTools.getSubmitToolJob().callHandler().apply(null,
                 CallToolRequest.builder("submit_tool").arguments(Map.of("path", filePath)).build());
@@ -104,7 +135,7 @@ public class JobToolsTest {
         JobTools jobTools = new JobTools(jobService);
 
         Callable<CallToolResult> task = () -> {
-            String filePath = "/path/to/file.pdf";
+            String filePath = testResource("sample.pdf");
             String callId = "call1";
 
             latch.await(); // Wait for the signal to start
@@ -130,6 +161,14 @@ public class JobToolsTest {
             e.printStackTrace();
         } finally {
             caller.shutdown();
+        }
+    }
+
+    private String testResource(String fileName) {
+        try {
+            return Path.of(getClass().getResource("/" + fileName).toURI()).toString();
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("Invalid test resource: " + fileName, e);
         }
     }
 

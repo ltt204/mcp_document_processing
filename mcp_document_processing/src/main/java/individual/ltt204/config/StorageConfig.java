@@ -7,6 +7,7 @@ import individual.ltt204.entities.Job;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
+import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
 import individual.ltt204.services.storage.methods.KeyValueStore;
 import individual.ltt204.services.storage.methods.RedisKeyValueStore;
 import redis.clients.jedis.ConnectionPoolConfig;
@@ -17,18 +18,16 @@ public class StorageConfig {
     public static IStorageService<Job> getJobStorageService() {
         // KeyValueStore<String, Job> jobStorage = new
         // ConcurrentHashMapKeyValueStore<>();
-        String redisHost = Config.getDotenv().get("REDIS_HOST");
-        int redisPort = Integer.parseInt(Config.getDotenv().get("REDIS_PORT"));
-        String redisPassword = Config.getDotenv().get("REDIS_PASSWORD");
 
         KeyValueStore<String, Job> jobStorage = new RedisKeyValueStore<>(
-                getRedisClient(redisHost, redisPort, redisPassword), "jobs:", Job.class, 3, 3600);
+                getRedisClient(),
+                "jobs:", Job.class, 3, 3600);
 
         return new JobStorageService(jobStorage);
     }
 
     public static IStorageService<Future<?>> getFutureActiveStorageService() {
-        return new ActiveFutureStorageService();
+        return new ActiveFutureStorageService(new ConcurrentHashMapKeyValueStore<>());
     }
 
     public static ConnectionPoolConfig getRedisPoolConfig() {
@@ -47,7 +46,11 @@ public class StorageConfig {
         return poolConfig;
     }
 
-    public static RedisClient getRedisClient(String redisHost, int redisPort, String redisPassword) {
+    public static RedisClient getRedisClient() {
+        String redisHost = Config.getDotenv().get("REDIS_HOST");
+        int redisPort = Integer.parseInt(Config.getDotenv().get("REDIS_PORT"));
+        String redisPassword = Config.getDotenv().get("REDIS_PASSWORD");
+
         RedisClient redisClient = RedisClient.builder()
                 .hostAndPort(redisHost, redisPort)
                 .clientConfig(DefaultJedisClientConfig.builder()

@@ -34,6 +34,7 @@ import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
+import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
 import individual.ltt204.services.storage.methods.KeyValueStore;
 import individual.ltt204.services.storage.methods.RedisKeyValueStore;
 import individual.ltt204.tools.ParserTool;
@@ -54,7 +55,7 @@ public class JobServiceRedisTest {
     private AtomicInteger parserCalls;
     private KeyValueStore<String, Job> jobStorage;
     private RedisClient redisClient;
-    private String keyPrefix;
+    private String jobKeyPrefix;
 
     @BeforeEach
     public void setUp() {
@@ -69,11 +70,12 @@ public class JobServiceRedisTest {
             Assumptions.abort("Redis is not available at the configured redis.url");
         }
 
-        keyPrefix = "test:job-service:" + UUID.randomUUID() + ":";
+        jobKeyPrefix = "test:key:" + UUID.randomUUID() + ":";
         parserCalls = new AtomicInteger(0);
-        jobStorage = new RedisKeyValueStore<>(redisClient, keyPrefix, Job.class, 3, 3600);
+        jobStorage = new RedisKeyValueStore<>(redisClient, jobKeyPrefix, Job.class, 3, 3600);
         jobStorageService = new JobStorageService(jobStorage);
-        futureStorageService = new ActiveFutureStorageService();
+
+        futureStorageService = new ActiveFutureStorageService(new ConcurrentHashMapKeyValueStore<>());
 
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
@@ -413,8 +415,8 @@ public class JobServiceRedisTest {
         toolRegistry.clear();
 
         if (redisClient != null) {
-            if (keyPrefix != null) {
-                redisClient.keys(keyPrefix + "*").forEach(redisClient::del);
+            if (jobKeyPrefix != null) {
+                redisClient.keys(jobKeyPrefix + "*").forEach(redisClient::del);
             }
             redisClient.close();
         }

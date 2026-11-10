@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,9 +35,11 @@ import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
 import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
 import individual.ltt204.services.storage.methods.KeyValueStore;
+import individual.ltt204.services.storage.methods.RedisKeyValueStore;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import redis.clients.jedis.RedisClient;
 
 public class JobServiceTest {
     private IStorageService<Job> jobStorageService;
@@ -52,10 +56,23 @@ public class JobServiceTest {
 
     @BeforeEach
     public void setUp() {
+
+        RedisClient redisClient = RedisClient.create(
+                System.getProperty("redis.url", "redis://:ltt204@localhost:6379"));
+        try {
+            Assumptions.assumeTrue("PONG".equals(redisClient.ping()),
+                    "Redis is not available at the configured redis.url");
+        } catch (RuntimeException exception) {
+            redisClient.close();
+            redisClient = null;
+            Assumptions.abort("Redis is not available at the configured redis.url");
+        }
+
         parserCalls = new AtomicInteger(0);
         jobStorage = new ConcurrentHashMapKeyValueStore<>();
         jobStorageService = new JobStorageService(jobStorage);
-        futureStorageService = new ActiveFutureStorageService();
+
+        futureStorageService = new ActiveFutureStorageService(new ConcurrentHashMapKeyValueStore<>());
 
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
