@@ -11,23 +11,25 @@ import redis.clients.jedis.params.SetParams;
 import tools.jackson.databind.ObjectMapper;
 
 public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
-    private static final int MAX_RETRIES = 5;
-    private static final int DEFAULT_EXPIRATION_SECONDS = 60;
-
     private final RedisClient redisClient;
     private final String keyPrefix;
     private final ObjectMapper objectMapper = Config.getObjectMapper();
     private final Class<V> valueType;
+    private final int maxRetries;
+    private final int expirationSeconds;
 
-    public RedisKeyValueStore(RedisClient redisClient, String keyPrefix, Class<V> valueType) {
+    public RedisKeyValueStore(RedisClient redisClient, String keyPrefix, Class<V> valueType, int maxRetries,
+            int expirationSeconds) {
         this.redisClient = redisClient;
         this.keyPrefix = keyPrefix;
         this.valueType = valueType;
+        this.maxRetries = maxRetries;
+        this.expirationSeconds = expirationSeconds;
     }
 
     @Override
     public boolean computeIfPresent(K key, V value, Predicate<V> skipComputionPredicate) {
-        for (int i = 0; i < MAX_RETRIES; i++) {
+        for (int i = 0; i < maxRetries; i++) {
             try (AbstractTransaction atx = redisClient.transaction(false)) {
                 String redisKey = keyPrefix + key.toString();
                 atx.watch(redisKey);
@@ -47,7 +49,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 String newValueJson = objectMapper.writeValueAsString(value);
 
                 atx.multi();
-                atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                atx.set(redisKey, newValueJson, SetParams.setParams().ex(expirationSeconds));
                 List<Object> result = atx.exec();
 
                 if (result == null) {
@@ -70,13 +72,13 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             }
         }
 
-        throw new RuntimeException("Failed to computeIfPresent after " + MAX_RETRIES + " retries");
+        throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
 
     }
 
     @Override
     public boolean computeIfPresent(K key, V value) {
-        for (int i = 0; i < MAX_RETRIES; i++) {
+        for (int i = 0; i < maxRetries; i++) {
             try (AbstractTransaction atx = redisClient.transaction(false)) {
                 String redisKey = keyPrefix + key.toString();
                 atx.watch(redisKey);
@@ -87,7 +89,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                     String newValueJson = objectMapper.writeValueAsString(value);
 
                     atx.multi();
-                    atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                    atx.set(redisKey, newValueJson, SetParams.setParams().ex(expirationSeconds));
                     List<Object> result = atx.exec();
 
                     if (result == null) {
@@ -112,12 +114,12 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             }
         }
 
-        throw new RuntimeException("Failed to computeIfPresent after " + MAX_RETRIES + " retries");
+        throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
     }
 
     @Override
     public boolean compute(K key, V value) {
-        for (int i = 0; i < MAX_RETRIES; i++) {
+        for (int i = 0; i < maxRetries; i++) {
             try (AbstractTransaction atx = redisClient.transaction(false)) {
                 String redisKey = keyPrefix + key.toString();
                 atx.watch(redisKey);
@@ -125,7 +127,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 String newValueJson = objectMapper.writeValueAsString(value);
 
                 atx.multi();
-                atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
+                atx.set(redisKey, newValueJson, SetParams.setParams().ex(expirationSeconds));
                 List<Object> result = atx.exec();
 
                 if (result == null) {
@@ -147,7 +149,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             }
         }
 
-        throw new RuntimeException("Failed to compute after " + MAX_RETRIES + " retries");
+        throw new RuntimeException("Failed to compute after " + maxRetries + " retries");
     }
 
     @Override
@@ -160,8 +162,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 return objectMapper.readValue(valueJson, valueType);
             }
         } catch (Exception e) {
-            // Handle the exception (e.g., log it)
-            System.err.println("Error during get: " + e.getMessage());
+            throw new RuntimeException("Error during get operation: " + e.getMessage(), e);
         }
 
         return null;
@@ -169,44 +170,12 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
     @Override
     public boolean putIfAbsent(K key, V value) {
-        for (int i = 0; i < MAX_RETRIES; i++) {
-            try (AbstractTransaction atx = redisClient.transaction(false)) {
+        String redisKey = keyPrefix + key.toString();
 
-                String redisKey = keyPrefix + key.toString();
-                atx.watch(redisKey);
+        String newValueJson = objectMapper.writeValueAsString(value);
+        SetParams setParams = SetParams.setParams().ex(expirationSeconds).nx();
 
-                Response<String> currentValue = atx.get(redisKey);
-
-                if (currentValue.get() != null) {
-                    return false; // Key already exists, do not overwrite
-                }
-
-                String newValueJson = objectMapper.writeValueAsString(value);
-
-                atx.multi();
-                atx.set(redisKey, newValueJson, SetParams.setParams().ex(DEFAULT_EXPIRATION_SECONDS));
-                List<Object> results = atx.exec();
-
-                if (results == null) {
-                    // Transaction failed due to a watch condition, retry
-                    continue;
-                }
-
-                return true;
-            } catch (Exception e) {
-                // Handle the exception (e.g., log it)
-                System.err.println("Error during putIfAbsent: " + e.getMessage());
-                // Optionally, you can add a small delay before retrying
-                try {
-                    Thread.sleep(100); // Sleep for 100 milliseconds before retrying
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt(); // Restore interrupted status
-                    throw new RuntimeException("Thread interrupted during retry", ie);
-                }
-            }
-        }
-
-        throw new RuntimeException("Failed to putIfAbsent after " + MAX_RETRIES + " retries");
+        return "OK".equals(redisClient.set(redisKey, newValueJson, setParams));
     }
 
     @Override
@@ -215,8 +184,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             String redisKey = keyPrefix + key.toString();
             redisClient.del(redisKey);
         } catch (Exception e) {
-            // Handle the exception (e.g., log it)
-            System.err.println("Error during remove: " + e.getMessage());
+            throw new RuntimeException("Error during remove operation: " + e.getMessage(), e);
         }
     }
 
@@ -226,10 +194,8 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             String pattern = keyPrefix + "*";
             return redisClient.keys(pattern).size();
         } catch (Exception e) {
-            // Handle the exception (e.g., log it)
-            System.err.println("Error during size retrieval: " + e.getMessage());
+            throw new RuntimeException("Error during size operation: " + e.getMessage(), e);
         }
-        return 0;
     }
 
 }

@@ -27,13 +27,9 @@ public class ConcurrentHashMapKeyValueStore<K, V> implements KeyValueStore<K, V>
                     return null;
                 }
 
-                System.out.println("Existing value: " + existingValue);
                 if (skipComputionPredicate.test(existingValue)) {
-                    System.out.println("Condition met, keeping existing value: " + existingValue.toString());
                     return existingValue;
                 }
-
-                System.out.println("Condition not met, updating value to: " + value);
 
                 return value;
             }) != null;

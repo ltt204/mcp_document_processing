@@ -17,7 +17,6 @@ public class CancelDemo {
         Future<?> a = pool.submit(() -> { // A: pure CPU for 3 s, like a parser
             worker.set(Thread.currentThread());
             log("A started");
-            long x = 0;
             while (System.currentTimeMillis() - T0 < 3000)
                 x++;
             log("A reached its last line. flag = " + Thread.currentThread().isInterrupted());

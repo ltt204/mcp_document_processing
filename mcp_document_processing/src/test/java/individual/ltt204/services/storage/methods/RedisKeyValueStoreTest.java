@@ -2,6 +2,7 @@ package individual.ltt204.services.storage.methods;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -32,7 +33,7 @@ class RedisKeyValueStoreTest {
             Assumptions.assumeTrue("PONG".equals(redisClient.ping()),
                     "Redis is not available at the configured redis.url");
             keyPrefix = "test:redis-store:" + UUID.randomUUID() + ":";
-            store = new RedisKeyValueStore<>(redisClient, keyPrefix, String.class);
+            store = new RedisKeyValueStore<>(redisClient, keyPrefix, String.class, 3, 3600);
         } catch (RuntimeException exception) {
             redisClient.close();
             redisClient = null;
@@ -51,6 +52,11 @@ class RedisKeyValueStoreTest {
             }
             redisClient.close();
         }
+    }
+
+    @Test
+    void getMissingKeyReturnsNull() {
+        assertNull(store.get("missing"));
     }
 
     @Test

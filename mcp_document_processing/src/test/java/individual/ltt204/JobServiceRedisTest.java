@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -70,7 +71,7 @@ public class JobServiceRedisTest {
 
         keyPrefix = "test:job-service:" + UUID.randomUUID() + ":";
         parserCalls = new AtomicInteger(0);
-        jobStorage = new RedisKeyValueStore<>(redisClient, keyPrefix, Job.class);
+        jobStorage = new RedisKeyValueStore<>(redisClient, keyPrefix, Job.class, 3, 3600);
         jobStorageService = new JobStorageService(jobStorage);
         futureStorageService = new ActiveFutureStorageService();
 
@@ -153,6 +154,88 @@ public class JobServiceRedisTest {
         for (String jobId : List.of(jobId1, jobId2)) {
             assertEquals(JobStatus.CANCELLED, jobService.retrieveJob(jobId).status(),
                     "Job " + jobId + " should be cancelled");
+        }
+    }
+
+    @Test
+    public void testPutIfAbsent_WhenKeyIsMissing_StoresJob() {
+        Job job = newJob();
+
+        boolean stored = jobStorage.putIfAbsent("put-if-absent", job);
+
+        assertTrue(stored);
+        assertEquals(job, jobStorage.get("put-if-absent"));
+    }
+
+    @Test
+    public void testPutIfAbsent_WhenKeyExists_DoesNotOverwriteJob() {
+        Job originalJob = newJob();
+        Job replacementJob = newJob();
+
+        assertTrue(jobStorage.putIfAbsent("put-if-absent", originalJob));
+        boolean stored = jobStorage.putIfAbsent("put-if-absent", replacementJob);
+
+        assertFalse(stored);
+        assertEquals(originalJob, jobStorage.get("put-if-absent"));
+    }
+
+    @Test
+    public void testPutIfAbsent_ConcurrentWriters_OnlyOneStoresJob() throws Exception {
+        int writerCount = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(writerCount);
+        CountDownLatch ready = new CountDownLatch(writerCount);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            List<Future<Boolean>> results = java.util.stream.IntStream.range(0, writerCount)
+                    .mapToObj(index -> executor.submit(() -> {
+                        ready.countDown();
+                        assertTrue(start.await(1, TimeUnit.SECONDS));
+                        return jobStorage.putIfAbsent("concurrent-put", newJob());
+                    }))
+                    .toList();
+
+            assertTrue(ready.await(1, TimeUnit.SECONDS));
+            start.countDown();
+
+            long successfulWrites = results.stream()
+                    .filter(result -> getResult(result))
+                    .count();
+
+            assertEquals(1, successfulWrites);
+            assertEquals(1, jobStorage.size());
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    public void testPutIfAbsent_ConcurrentWriters_WhenKeyExists_AllFail() throws Exception {
+        int writerCount = 8;
+        assertTrue(jobStorage.putIfAbsent("concurrent-existing", newJob()));
+
+        ExecutorService executor = Executors.newFixedThreadPool(writerCount);
+        CountDownLatch ready = new CountDownLatch(writerCount);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            List<Future<Boolean>> results = java.util.stream.IntStream.range(0, writerCount)
+                    .mapToObj(index -> executor.submit(() -> {
+                        ready.countDown();
+                        assertTrue(start.await(1, TimeUnit.SECONDS));
+                        return jobStorage.putIfAbsent("concurrent-existing", newJob());
+                    }))
+                    .toList();
+
+            assertTrue(ready.await(1, TimeUnit.SECONDS));
+            start.countDown();
+
+            assertTrue(results.stream().noneMatch(result -> getResult(result)));
+            assertEquals(1, jobStorage.size());
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
         }
     }
 
@@ -342,6 +425,24 @@ public class JobServiceRedisTest {
             return Path.of(getClass().getResource("/" + fileName).toURI()).toString();
         } catch (URISyntaxException e) {
             throw new IllegalStateException("Invalid test resource: " + fileName, e);
+        }
+    }
+
+    private Job newJob() {
+        return new Job(
+                UUID.randomUUID(),
+                Map.of("filePath", "test.fast"),
+                null,
+                JobStatus.PENDING,
+                "Test job",
+                "Test job for putIfAbsent");
+    }
+
+    private boolean getResult(Future<Boolean> result) {
+        try {
+            return result.get(2, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            throw new AssertionError("Concurrent putIfAbsent operation failed", exception);
         }
     }
 }

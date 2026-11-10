@@ -2,6 +2,7 @@ package individual.ltt204.services.storage.methods;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -46,7 +47,7 @@ class KeyValueStoreContractTest {
                         null)),
                 Arguments.of(new StoreFixture(
                         "Redis",
-                        new RedisKeyValueStore<String, String>(redisClient, keyPrefix, String.class),
+                        new RedisKeyValueStore<String, String>(redisClient, keyPrefix, String.class, 3, 3600),
                         redisClient,
                         keyPrefix)));
     }
@@ -64,6 +65,7 @@ class KeyValueStoreContractTest {
         currentFixture = fixture;
         boolean[] predicateCalled = { false };
 
+        assertNull(fixture.store.get("missing"));
         assertFalse(fixture.store.computeIfPresent("missing", "value", existing -> {
             predicateCalled[0] = true;
             return false;
@@ -89,6 +91,7 @@ class KeyValueStoreContractTest {
                     .toList();
 
             assertTrue(ready.await(1, TimeUnit.SECONDS));
+            assertEquals(1, start.getCount(), "Start latch should be at 1 before starting the race");
             start.countDown();
 
             long loserResults = 0;
@@ -98,7 +101,16 @@ class KeyValueStoreContractTest {
                 }
             }
 
+            long winnerCount = results.stream().filter(future -> {
+                try {
+                    return future.get(2, TimeUnit.SECONDS) == Boolean.TRUE;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).count();
+
             assertEquals(7, loserResults);
+            assertEquals(1, winnerCount);
             assertTrue(fixture.store.get("race").startsWith("value-"));
         } finally {
             executor.shutdownNow();
