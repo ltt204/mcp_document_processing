@@ -1,19 +1,20 @@
 package individual.ltt204.services.storage;
 
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
+import individual.ltt204.services.storage.methods.KeyValueStore;
+
 public class ActiveFutureStorageService implements IStorageService<Future<?>> {
-    private ConcurrentHashMap<String, Future<?>> futureStorage = new ConcurrentHashMap<>();
+    private KeyValueStore<String, Future<?>> futureStorage;
 
     @Override
     public Future<?> store(String key, Future<?> value) {
-        return futureStorage.put(key, value);
+        return futureStorage.putIfAbsent(key, value) ? value : null;
     }
 
     @Override
     public boolean checkAndUpdate(String key, Future<?> value) {
-        futureStorage.put(key, value);
+        futureStorage.computeIfPresent(key, value);
         return true;
     }
 

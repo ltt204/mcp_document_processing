@@ -20,14 +20,14 @@ public class ConcurrentHashMapKeyValueStore<K, V> implements KeyValueStore<K, V>
     }
 
     @Override
-    public boolean computeIfPresent(K key, V value, Predicate<V> skipComputionPredicate) {
+    public boolean computeIfPresent(K key, V value, Predicate<V> skipIf) {
         try {
             return map.compute(key, (currentKey, existingValue) -> {
                 if (existingValue == null) {
                     return null;
                 }
 
-                if (skipComputionPredicate.test(existingValue)) {
+                if (skipIf.test(existingValue)) {
                     return existingValue;
                 }
 

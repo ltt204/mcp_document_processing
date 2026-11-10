@@ -28,7 +28,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     }
 
     @Override
-    public boolean computeIfPresent(K key, V value, Predicate<V> skipComputionPredicate) {
+    public boolean computeIfPresent(K key, V value, Predicate<V> skipIf) {
         for (int i = 0; i < maxRetries; i++) {
             try (AbstractTransaction atx = redisClient.transaction(false)) {
                 String redisKey = keyPrefix + key.toString();
@@ -41,7 +41,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 }
                 V existingValue = objectMapper.readValue(currentValue.get(), valueType);
 
-                if (skipComputionPredicate.test(existingValue)) {
+                if (skipIf.test(existingValue)) {
                     atx.unwatch();
                     return false; // Condition not satisfied, nothing to compute
                 }
