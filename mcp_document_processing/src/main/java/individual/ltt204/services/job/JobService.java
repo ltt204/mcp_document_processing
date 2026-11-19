@@ -1,6 +1,7 @@
 package individual.ltt204.services.job;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
@@ -36,9 +37,41 @@ public class JobService {
         this.scheduler = scheduler;
     }
 
+    public void submitJob(String jobID, String filePath) throws IllegalStateException, RuntimeException {
+        Job job = new Job(
+                UUID.fromString(jobID),
+                Map.of("filePath", filePath.trim()),
+                null,
+                JobStatus.PENDING,
+                "Job for file: " + filePath,
+                "Processing file: " + filePath);
+
+        jobStorageService.store(job.id().toString(), job);
+        synchronized (futureLifecycleLock) {
+            try {
+                Future<?> queuedJob = pool.submit(() -> {
+                    try {
+                        processJob(job);
+                    } finally {
+                        synchronized (futureLifecycleLock) {
+                            futureStorageService.delete(job.id().toString());
+                        }
+                    }
+                });
+                futureStorageService.store(job.id().toString(), queuedJob);
+
+            } catch (RejectedExecutionException e) {
+                jobStorageService.delete(job.id().toString());
+                futureStorageService.delete(job.id().toString());
+
+                throw new IllegalStateException("Server busy, retry later");
+            }
+        }
+    }
+
     public String submitJob(String filePath) throws IllegalStateException, RuntimeException {
         Job job = new Job(
-                java.util.UUID.randomUUID(),
+                UUID.randomUUID(),
                 Map.of("filePath", filePath.trim()),
                 null,
                 JobStatus.PENDING,

@@ -7,7 +7,9 @@ import individual.ltt204.config.Config;
 import redis.clients.jedis.AbstractTransaction;
 import redis.clients.jedis.RedisClient;
 import redis.clients.jedis.Response;
+import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.params.SetParams;
+import redis.clients.jedis.resps.ScanResult;
 import tools.jackson.databind.ObjectMapper;
 
 public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
@@ -20,6 +22,9 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
     public RedisKeyValueStore(RedisClient redisClient, String keyPrefix, Class<V> valueType, int maxRetries,
             int expirationSeconds) {
+        if (maxRetries < 1 || expirationSeconds < 1) {
+            throw new IllegalArgumentException("Invalid maxRetries or expirationSeconds. Both must be greater than 0.");
+        }
         this.redisClient = redisClient;
         this.keyPrefix = keyPrefix;
         this.valueType = valueType;
@@ -58,7 +63,6 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 }
 
                 return true;
-
             } catch (Exception e) {
                 // Handle the exception (e.g., log it)
                 System.err.println("Error during computeIfPresent: " + e.getMessage());
@@ -73,7 +77,6 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
         }
 
         throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
-
     }
 
     @Override
@@ -191,11 +194,11 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     @Override
     public int size() {
         try {
-            String pattern = keyPrefix + "*";
-            return redisClient.keys(pattern).size();
+            ScanResult<String> result = redisClient.scan(ScanParams.SCAN_POINTER_START,
+                    new ScanParams().match(keyPrefix));
+            return result.getResult().size();
         } catch (Exception e) {
             throw new RuntimeException("Error during size operation: " + e.getMessage(), e);
         }
     }
-
 }

@@ -3,6 +3,7 @@ package individual.ltt204.config;
 import java.time.Duration;
 import java.util.concurrent.Future;
 
+import individual.ltt204.entities.CallEntry;
 import individual.ltt204.entities.Job;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
@@ -28,6 +29,14 @@ public class StorageConfig {
 
     public static IStorageService<Future<?>> getFutureActiveStorageService() {
         return new ActiveFutureStorageService(new ConcurrentHashMapKeyValueStore<>());
+    }
+
+    public static KeyValueStore<String, CallEntry> getCallEntryStorageService() {
+        KeyValueStore<String, CallEntry> callEntryStorage = new RedisKeyValueStore<>(
+                getRedisClient(),
+                "calls:", CallEntry.class, 3, 3600);
+
+        return callEntryStorage;
     }
 
     public static ConnectionPoolConfig getRedisPoolConfig() {

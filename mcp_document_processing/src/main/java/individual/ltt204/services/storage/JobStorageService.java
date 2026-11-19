@@ -9,7 +9,8 @@ import individual.ltt204.services.storage.methods.KeyValueStore;
 
 /**
  * JobStorageService
- * Storing Job Results in a ConcurrentHashMap.
+ * Storing Job Results in a thread-safe manner using a KeyValueStore
+ * implementation.
  */
 public class JobStorageService implements IStorageService<Job> {
     private static Set<JobStatus> FINAL_STATES = new HashSet<>();
