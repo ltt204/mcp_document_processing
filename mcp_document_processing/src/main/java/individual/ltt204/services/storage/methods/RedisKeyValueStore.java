@@ -1,5 +1,6 @@
 package individual.ltt204.services.storage.methods;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -194,9 +195,12 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     @Override
     public int size() {
         try {
+            HashSet<String> uniqueKeys = new HashSet<>();
             ScanResult<String> result = redisClient.scan(ScanParams.SCAN_POINTER_START,
-                    new ScanParams().match(keyPrefix));
-            return result.getResult().size();
+                    new ScanParams().match(keyPrefix + "*").count(500));
+
+            uniqueKeys.addAll(result.getResult());
+            return uniqueKeys.size();
         } catch (Exception e) {
             throw new RuntimeException("Error during size operation: " + e.getMessage(), e);
         }
