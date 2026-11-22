@@ -4,6 +4,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.function.Predicate;
 
+import org.apache.commons.logging.Log;
+
 import individual.ltt204.config.Config;
 import redis.clients.jedis.AbstractTransaction;
 import redis.clients.jedis.RedisClient;
@@ -65,9 +67,7 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
                 return true;
             } catch (Exception e) {
-                // Handle the exception (e.g., log it)
                 System.err.println("Error during computeIfPresent: " + e.getMessage());
-                // Optionally, you can add a small delay before retrying
                 try {
                     Thread.sleep(100); // Sleep for 100 milliseconds before retrying
                 } catch (InterruptedException ie) {
@@ -76,8 +76,8 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 }
             }
         }
-
-        throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
+        // Failed to computeIfPresent after serveral retries
+        throw new RuntimeException("Server is busy or unavailable.");
     }
 
     @Override
@@ -118,7 +118,8 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             }
         }
 
-        throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
+        // "Failed to computeIfPresent after serveral retries
+        throw new RuntimeException("Server is busy or unavailable.");
     }
 
     @Override
