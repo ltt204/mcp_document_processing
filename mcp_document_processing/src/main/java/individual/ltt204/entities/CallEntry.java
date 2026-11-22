@@ -2,18 +2,18 @@ package individual.ltt204.entities;
 
 public class CallEntry {
     private String filePath;
-    private String jobId;
+    private String jobID;
 
-    public CallEntry(String filePath, String jobId) {
+    public CallEntry(String jobID, String filePath) {
+        this.jobID = jobID;
         this.filePath = filePath;
-        this.jobId = jobId;
     }
 
     public String getFilePath() {
         return filePath;
     }
 
-    public String getjobId() {
-        return jobId;
+    public String getjobID() {
+        return jobID;
     }
 }

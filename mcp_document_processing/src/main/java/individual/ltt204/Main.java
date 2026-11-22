@@ -49,7 +49,7 @@ public final class Main {
         JobService jobService = new JobService(StorageConfig.getJobStorageService(),
                 StorageConfig.getFutureActiveStorageService(),
                 executor, scheduler);
-        JobTools jobTools = new JobTools(jobService);
+        JobTools jobTools = new JobTools(jobService, StorageConfig.getCallEntryStorageService());
 
         McpSyncServer syncServer = McpServer.sync(Config.getStdioServerTransportProvider())
                 .serverInfo("mcp_document_processing", "1.0.0")

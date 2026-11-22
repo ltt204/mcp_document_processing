@@ -1,13 +1,18 @@
 package individual.ltt204.services.storage.methods;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.function.Predicate;
+
+import org.apache.commons.logging.Log;
 
 import individual.ltt204.config.Config;
 import redis.clients.jedis.AbstractTransaction;
 import redis.clients.jedis.RedisClient;
 import redis.clients.jedis.Response;
+import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.params.SetParams;
+import redis.clients.jedis.resps.ScanResult;
 import tools.jackson.databind.ObjectMapper;
 
 public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
@@ -20,6 +25,9 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
     public RedisKeyValueStore(RedisClient redisClient, String keyPrefix, Class<V> valueType, int maxRetries,
             int expirationSeconds) {
+        if (maxRetries < 1 || expirationSeconds < 1) {
+            throw new IllegalArgumentException("Invalid maxRetries or expirationSeconds. Both must be greater than 0.");
+        }
         this.redisClient = redisClient;
         this.keyPrefix = keyPrefix;
         this.valueType = valueType;
@@ -58,11 +66,8 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 }
 
                 return true;
-
             } catch (Exception e) {
-                // Handle the exception (e.g., log it)
                 System.err.println("Error during computeIfPresent: " + e.getMessage());
-                // Optionally, you can add a small delay before retrying
                 try {
                     Thread.sleep(100); // Sleep for 100 milliseconds before retrying
                 } catch (InterruptedException ie) {
@@ -71,9 +76,8 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
                 }
             }
         }
-
-        throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
-
+        // Failed to computeIfPresent after serveral retries
+        throw new RuntimeException("Server is busy or unavailable.");
     }
 
     @Override
@@ -114,7 +118,8 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
             }
         }
 
-        throw new RuntimeException("Failed to computeIfPresent after " + maxRetries + " retries");
+        // "Failed to computeIfPresent after serveral retries
+        throw new RuntimeException("Server is busy or unavailable.");
     }
 
     @Override
@@ -191,11 +196,14 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     @Override
     public int size() {
         try {
-            String pattern = keyPrefix + "*";
-            return redisClient.keys(pattern).size();
+            HashSet<String> uniqueKeys = new HashSet<>();
+            ScanResult<String> result = redisClient.scan(ScanParams.SCAN_POINTER_START,
+                    new ScanParams().match(keyPrefix + "*").count(500));
+
+            uniqueKeys.addAll(result.getResult());
+            return uniqueKeys.size();
         } catch (Exception e) {
             throw new RuntimeException("Error during size operation: " + e.getMessage(), e);
         }
     }
-
 }

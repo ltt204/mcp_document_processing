@@ -1,9 +1,10 @@
 package individual.ltt204.tools;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
 
 import individual.ltt204.entities.CallEntry;
 import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.storage.methods.KeyValueStore;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
@@ -13,10 +14,13 @@ public class JobTools {
 
     private JobService jobService;
 
-    private ConcurrentHashMap<String, CallEntry> callsStorage = new ConcurrentHashMap<>();
+    // private ConcurrentHashMap<String, CallEntry> callsStorage = new
+    // ConcurrentHashMap<>();
+    private final KeyValueStore<String, CallEntry> callsStorage;
 
-    public JobTools(JobService jobService) {
+    public JobTools(JobService jobService, KeyValueStore<String, CallEntry> callsStorage) {
         this.jobService = jobService;
+        this.callsStorage = callsStorage;
     }
 
     public SyncToolSpecification getSubmitToolJob() {
@@ -39,37 +43,43 @@ public class JobTools {
                         .build())
                 .callHandler((exchange, request) -> {
                     String filePath = (String) request.arguments().get("path");
-                    String callId = (String) request.arguments().get("callId");
+                    String callID = (String) request.arguments().get("callId");
 
                     try {
-                        if (callId != null && !callId.isEmpty()) {
-                            CallEntry e = callsStorage.compute(callId, (k, value) -> {
-                                if (value == null) {
-                                    String jobId = jobService.submitJob(filePath);
-                                    return new CallEntry(filePath, jobId);
+                        String jobID = UUID.randomUUID().toString();
+                        CallToolResult.Builder resultBuilder = CallToolResult.builder()
+                                .addTextContent("File path: " + filePath);
+
+                        if (callID != null && !callID.isEmpty()) {
+                            boolean success = callsStorage.putIfAbsent(callID, new CallEntry(jobID, filePath));
+
+                            if (!success) {
+                                CallEntry existedEntry = callsStorage.get(callID);
+
+                                if (!existedEntry.getFilePath().equals(filePath)) {
+                                    return CallToolResult.builder()
+                                            .addTextContent("Error: Call ID already exists with a different file path: "
+                                                    + existedEntry.getFilePath())
+                                            .build();
                                 }
 
-                                if (!value.getFilePath().equals(filePath)) {
-                                    throw new RuntimeException(
-                                            "Call ID already exists with a different file path: "
-                                                    + value.getFilePath());
-                                }
+                                var existed = callsStorage.get(callID);
+                                return resultBuilder.addTextContent("Call ID: " + callID)
+                                        .addTextContent("Job ID: " + existed.getjobID())
+                                        .addTextContent("Call ID already exists.").build();
+                            }
 
-                                return value;
-                            });
-
-                            return CallToolResult.builder()
-                                    .addTextContent("File path: " + filePath)
-                                    .addTextContent("Call ID: " + callId)
-                                    .addTextContent("Job ID: " + e.getjobId())
-                                    .build();
+                            jobService.submitJob(jobID, filePath);
+                            return resultBuilder.addTextContent("Call ID: " + callID)
+                                    .addTextContent("Job ID: " + jobID).build();
                         }
 
-                        String jobId = jobService.submitJob(filePath);
-                        return CallToolResult.builder()
-                                .addTextContent("File path: " + filePath)
-                                .addTextContent("Job ID: " + jobId)
+                        jobService.submitJob(jobID, filePath);
+                        return resultBuilder
+                                .addTextContent("JobID: " + jobID)
+                                .addTextContent("Job submitted successfully.")
                                 .build();
+
                     } catch (RuntimeException e) {
                         return CallToolResult.builder()
                                 .isError(true)
