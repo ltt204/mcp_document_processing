@@ -10,6 +10,8 @@ import java.util.concurrent.TimeUnit;
 
 import individual.ltt204.entities.Job;
 import individual.ltt204.entities.JobStatus;
+import individual.ltt204.grpc.ParsingRequest;
+import individual.ltt204.services.McpClient;
 import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
@@ -26,15 +28,22 @@ public class JobService {
     private IStorageService<Future<?>> futureStorageService;
     private ExecutorService pool;
     private ScheduledExecutorService scheduler;
+    private McpClient mcpClient; // Placeholder for the MCP client, if needed for future extensions
 
     private Object futureLifecycleLock = new Object();
 
-    public JobService(IStorageService<Job> jobStorageService, IStorageService<Future<?>> futureStorageService,
+    public JobService(IStorageService<Job> jobStorageService,
+            IStorageService<Future<?>> futureStorageService,
             ExecutorService pool, ScheduledExecutorService scheduler) {
         this.jobStorageService = jobStorageService;
         this.futureStorageService = futureStorageService;
         this.pool = pool;
         this.scheduler = scheduler;
+    }
+
+    public JobService(IStorageService<Job> jobStorageService, McpClient mcpClient) {
+        this.jobStorageService = jobStorageService;
+        this.mcpClient = mcpClient;
     }
 
     public void submitJob(String jobID, String filePath) throws IllegalStateException, RuntimeException {
@@ -47,28 +56,41 @@ public class JobService {
                 "Processing file: " + filePath);
 
         jobStorageService.store(job.id().toString(), job);
-        synchronized (futureLifecycleLock) {
-            try {
-                Future<?> queuedJob = pool.submit(() -> {
-                    try {
-                        processJob(job);
-                    } finally {
-                        synchronized (futureLifecycleLock) {
-                            futureStorageService.delete(job.id().toString());
-                        }
-                    }
-                });
-                futureStorageService.store(job.id().toString(), queuedJob);
+        mcpClient.convert(ParsingRequest.newBuilder().setJobId(jobID).build());
+        // synchronized (futureLifecycleLock) {
+        // try {
+        // Future<?> queuedJob = pool.submit(() -> {
+        // try {
+        // processJob(job);
+        // } finally {
+        // synchronized (futureLifecycleLock) {
+        // futureStorageService.delete(job.id().toString());
+        // }
+        // }
+        // });
+        // futureStorageService.store(job.id().toString(), queuedJob);
 
-            } catch (RejectedExecutionException e) {
-                jobStorageService.delete(job.id().toString());
-                futureStorageService.delete(job.id().toString());
+        // } catch (RejectedExecutionException e) {
+        // jobStorageService.delete(job.id().toString());
+        // futureStorageService.delete(job.id().toString());
 
-                throw new IllegalStateException("Server busy, retry later");
-            }
-        }
+        // throw new IllegalStateException("Server busy, retry later");
+        // }
+        // }
+
     }
 
+    /**
+     * Submits a new job for processing
+     * In-process worker using ThreadPoolExecutor to handle job processing
+     * asynchronously. The job is stored in the job storage service and a future
+     * representing the job's execution is stored in the future storage service.
+     *
+     * @param filePath The path to the file to be processed.
+     * @return The ID of the submitted job.
+     * @throws IllegalStateException if the server is busy.
+     * @throws RuntimeException      if an error occurs during job submission.
+     */
     public String submitJob(String filePath) throws IllegalStateException, RuntimeException {
         Job job = new Job(
                 UUID.randomUUID(),
@@ -198,6 +220,15 @@ public class JobService {
                 .build();
     }
 
+    /**
+     * Processes a job by executing the appropriate parser tool based on the file
+     * extension.
+     * Updates the job status and result in the job storage service.
+     * In-process worker using ThreadPoolExecutor to handle job processing
+     * asynchronously.
+     *
+     * @param job The job to be processed.
+     */
     private void processJob(Job job) {
         // Set job status to inprogress
         try {
@@ -209,7 +240,6 @@ public class JobService {
             scheduler.schedule(() -> cancelTimeoutJobInternal(job.id().toString()),
                     ToolRegistry.getInstance().getToolTimeout(job.request().get("filePath").toString()),
                     TimeUnit.MILLISECONDS);
-
             jobStorageService.checkAndUpdate(job.id().toString(), job.WithStatus(JobStatus.IN_PROGRESS));
 
             ParserTool parserTool = ToolRegistry.getInstance()
@@ -232,6 +262,15 @@ public class JobService {
             Thread.currentThread().interrupt();
             System.err.println("Cancelled Job " + job.id() + ": " + e.getMessage());
         }
+    }
+
+    private void processJob(Job job, ParsingRequest request) {
+        String filePath = job.request().get("filePath").toString();
+
+        mcpClient.convert(request).withDeadlineAfter(
+                ToolRegistry.getInstance().getToolTimeout(filePath),
+                TimeUnit.MILLISECONDS);
+
     }
 
     private void cancelTimeoutJobInternal(String jobId) {

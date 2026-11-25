@@ -4,8 +4,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.function.Predicate;
 
-import org.apache.commons.logging.Log;
-
 import individual.ltt204.config.Config;
 import redis.clients.jedis.AbstractTransaction;
 import redis.clients.jedis.RedisClient;

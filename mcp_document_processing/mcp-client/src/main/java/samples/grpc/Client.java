@@ -37,19 +37,7 @@ public class Client {
         Client client = new Client(channel);
         String filepath = "/home/ltt204/java-project/mcp-document-processing-server/mcp_document_processing/src/test/resources/sample.pdf";
         String notExistedFilepath = "not/existed/resources/sample.pdf";
-        String corruptedFilepath = "/home/ltt204/java-project/mcp-document-processing-server/mcp_document_processing/src/main/java/samples/grpc/sample.pdf"; // This
-                                                                                                                                                             // originally
-                                                                                                                                                             // xlsx
-                                                                                                                                                             // file
-                                                                                                                                                             // but
-                                                                                                                                                             // renamed
-                                                                                                                                                             // to
-                                                                                                                                                             // pdf
-                                                                                                                                                             // file,
-                                                                                                                                                             // so
-                                                                                                                                                             // it
-                                                                                                                                                             // is
-        // corrupted file.
+        String corruptedFilepath = "/home/ltt204/java-project/mcp-document-processing-server/mcp_document_processing/src/main/java/samples/grpc/sample.pdf";
 
         client.convert(filepath);
         client.convert(notExistedFilepath);
