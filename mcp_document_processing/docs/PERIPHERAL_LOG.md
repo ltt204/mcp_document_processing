@@ -11,3 +11,13 @@
 - `io.github.ascopes:protobuf-maven-plugin`: newer, can use a system protoc, but 0.6.1 xolstice is the common reference most guides use.
 - Gradle protobuf plugin: not applicable, project is Maven.
 - `grpc-netty` (non-shaded) instead of `grpc-netty-shaded`: smaller jar but risks Netty version clashes with other libraries. Shaded avoids that.
+
+## 2026-11-25: makefile for the multi-module layout
+
+**Done:** `bundle` still runs `mvn clean package` from the parent, which builds all three modules in order. `run` and `mcp-inspector` now point at `mcp-client/target/mcp-client-1.0-SNAPSHOT.jar`. Added `run-worker` for `mcp-worker/target/mcp-worker-1.0-SNAPSHOT.jar`. The jar paths are variables at the top.
+
+**Why:** each executable module builds its own shaded jar, so one jar path no longer works.
+
+**Other options:**
+- `mvn -pl mcp-client,mcp-worker -am package`: skips building `mcp-api` as a separate step, but the reactor already builds it first, so plain `package` is equivalent and simpler.
+- A `make` target that starts both processes: hides which process owns which log stream. Run each in its own terminal for now.

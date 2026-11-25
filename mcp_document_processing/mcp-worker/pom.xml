@@ -1,0 +1,19 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>individual.ltt204</groupId>
+    <artifactId>mcp_document_processing</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>mcp-worker</artifactId>
+  <name>mcp-worker</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mcp-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+
+</project>

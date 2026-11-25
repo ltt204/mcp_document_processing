@@ -1,0 +1,37 @@
+Trong Tin Ly
++ Ho Chi Minh City # trongtin.cv@gmail.com  0332 931 799 ð ltt204 § ltt204
+About Me
+Software Engineer with hands-on experience building scalable backends, reliable transactional systems, and performant
+user interfaces. Focused on concurrency optimization, latency profiling, and owning core systems end-to-end. Passionate
+about software reliability and clean design.
+Education
+University of Science - VNUHCM - BS in Software Engineering 2022 – Expected Oct 2026
+◦ GPA: 3.67/4.0 (3.77/4.0 in Major)
+◦ Cambridge English: Preliminary – CEFR B2
+Skills
+Programming Languages: Java, TypeScript, Python, SQL
+Frameworks & Core: Spring Boot, NestJS, Next.js, Flutter
+Databases: PostgreSQL, MySQL, Redis
+Infrastructure & DevOps: Docker, GitHub Actions, Ngin
+Work Experience
+Software Engineer – Jarvis AI Business (Helpdesk & POS Retail) Dec 2025 – Aug 2026
+◦ Directed technical scope for a 4-person team, identifying structural gaps – missing features for branches, multi-
+tenant, custom fields, import/export – and extending the same model into a dynamic import/export layer.
+◦ Architected a Server-Driven UI (SDUI) registry (NestJS, Next.js) for zero-code merchant storefront config-
+uration, removing the engineering bottleneck to onboarding the pilot customer’s catalog.
+◦ Built multi-tenant custom domain support with automated TLS provisioning (Cloudflare Custom Hostnames
+API, Nginx), meeting the pilot customer’s requirement to run their storefront on their own domain.
+◦ Preserved live storefront functionality during a duplicate-content SEO conflict by fetching blog content server-side.
+Projects
+AI Primary – Graduation Project – Team of 5 § Mobile Repo 2
+§ Backend Repo 2
+§ Gateway Repo 2
+◦ Developed an AI-powered educational resource generator published to the Play Store and App Store, utilizing a
+cross-platform Flutter client integrated with Keycloak IAM and Google OAuth 2.0.
+◦ Led the design of a modular monolith backend using Java, Spring Boot, and Spring Modulith.
+◦ Solely architected a GenAI Gateway proxy (Python, FastAPI, LangChain) supporting OpenAI, Gemini, and
+Vertex AI, implementing Server-Sent Events (SSE) for streaming document outlines and media generation.
+◦ Prevented duplicate AI-generation by designing a distributed Idempotency Key middleware (Redis caching,
+PostgreSQL transactional persistence).
+Trong Tin - Page 1 of 1
+Last updated in Aug 2026
