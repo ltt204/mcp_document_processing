@@ -4,7 +4,7 @@ import individual.ltt204.services.McpClient;
 import io.grpc.ManagedChannel;
 
 public class WorkerConfig {
-    public ManagedChannel getManagedChannel() {
+    public static ManagedChannel getManagedChannel() {
         String target = "localhost:50051"; // TODO: Replace with the actual server address
 
         ManagedChannel channel = io.grpc.ManagedChannelBuilder.forTarget(target)
@@ -15,7 +15,7 @@ public class WorkerConfig {
         return channel;
     }
 
-    public McpClient getClient() {
+    public static McpClient getClient() {
         ManagedChannel channel = getManagedChannel();
         return new McpClient(channel);
     }

@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import individual.ltt204.entities.Job;
 import individual.ltt204.entities.JobStatus;
 import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.job.JobService.JobServiceBuilder;
 import individual.ltt204.services.parsing.IParsingService;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.IStorageService;
@@ -80,7 +81,12 @@ public class JobServiceRedisTest {
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
         scheduler = Executors.newSingleThreadScheduledExecutor();
-        jobService = new JobService(jobStorageService, futureStorageService, pool, scheduler);
+        jobService = new JobServiceBuilder()
+                .jobStorageService(jobStorageService)
+                .futureStorageService(futureStorageService)
+                .pool(pool)
+                .mcpClient(null) // Not needed for this test
+                .build();
 
         started = new CountDownLatch(2);
         release = new CountDownLatch(1);

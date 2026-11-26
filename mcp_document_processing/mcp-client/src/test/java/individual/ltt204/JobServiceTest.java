@@ -75,7 +75,12 @@ public class JobServiceTest {
         pool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(2));
         scheduler = Executors.newSingleThreadScheduledExecutor();
-        jobService = new JobService(jobStorageService, futureStorageService, pool, scheduler);
+        jobService = new JobService.JobServiceBuilder()
+                .jobStorageService(jobStorageService)
+                .futureStorageService(futureStorageService)
+                .pool(pool)
+                .mcpClient(null) // Not needed for this test
+                .build();
 
         started = new CountDownLatch(2);
         release = new CountDownLatch(1);

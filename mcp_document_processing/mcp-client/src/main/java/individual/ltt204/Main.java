@@ -3,8 +3,11 @@ package individual.ltt204;
 import java.util.List;
 
 import individual.ltt204.config.Config;
+import individual.ltt204.config.ParsingToolConfig;
 import individual.ltt204.config.StorageConfig;
+import individual.ltt204.config.WorkerConfig;
 import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.job.JobService.JobServiceBuilder;
 import individual.ltt204.tools.JobTools;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -15,12 +18,15 @@ import io.modelcontextprotocol.server.McpSyncServer;
 public final class Main {
 
     public static McpSyncServer createMcpSyncServerSession() {
-        var executor = Config.getJobExecutor();
-        var scheduler = Config.getJobScheduler();
+        ParsingToolConfig.registerParsingTools();
 
-        JobService jobService = new JobService(StorageConfig.getJobStorageService(),
-                StorageConfig.getFutureActiveStorageService(),
-                executor, scheduler);
+        JobService jobService = new JobServiceBuilder()
+                .jobStorageService(StorageConfig.getJobStorageService())
+                .futureStorageService(StorageConfig.getFutureActiveStorageService())
+                .pool(Config.getJobExecutor())
+                .mcpClient(WorkerConfig.getClient())
+                .build();
+
         JobTools jobTools = new JobTools(jobService, StorageConfig.getCallEntryStorageService());
 
         McpSyncServer syncServer = McpServer.sync(Config.getStdioServerTransportProvider())

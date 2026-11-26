@@ -25,7 +25,7 @@ public class Worker {
 
     public void stop() throws InterruptedException {
         if (server != null) {
-            server.shutdown().awaitTermination();
+            server.awaitTermination();
         }
     }
 

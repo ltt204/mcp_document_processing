@@ -6,6 +6,14 @@ package individual.ltt204.services.storage;
  * 
  * @param <T> the type of objects to be stored
  */
-public interface IStorageGetOnlyService<T> {
+public interface IStorageService<T> {
+    T store(String key, T value);
+
+    boolean checkAndUpdate(String key, T value);
+
     T retrieve(String key);
+
+    void delete(String key);
+
+    int getCount();
 }

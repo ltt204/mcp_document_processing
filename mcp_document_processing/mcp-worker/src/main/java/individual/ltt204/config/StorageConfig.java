@@ -1,10 +1,13 @@
 package individual.ltt204.config;
 
 import java.time.Duration;
+import java.util.concurrent.Future;
 
 import individual.ltt204.entities.Job;
-import individual.ltt204.services.storage.IStorageGetOnlyService;
+import individual.ltt204.services.storage.ActiveFutureStorageService;
+import individual.ltt204.services.storage.IStorageService;
 import individual.ltt204.services.storage.JobStorageService;
+import individual.ltt204.services.storage.methods.ConcurrentHashMapKeyValueStore;
 import individual.ltt204.services.storage.methods.KeyValueStore;
 import individual.ltt204.services.storage.methods.RedisKeyValueStore;
 import redis.clients.jedis.ConnectionPoolConfig;
@@ -12,7 +15,10 @@ import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.RedisClient;
 
 public class StorageConfig {
-    public static IStorageGetOnlyService<Job> getJobStorageService() {
+    public static IStorageService<Job> getJobStorageService() {
+        // KeyValueStore<String, Job> jobStorage = new
+        // ConcurrentHashMapKeyValueStore<>();
+
         KeyValueStore<String, Job> jobStorage = new RedisKeyValueStore<>(
                 getRedisClient(),
                 "jobs:", Job.class, 3, 3600);
@@ -20,10 +26,13 @@ public class StorageConfig {
         return new JobStorageService(jobStorage);
     }
 
+    public static IStorageService<Future<?>> getFutureActiveStorageService() {
+        return new ActiveFutureStorageService(new ConcurrentHashMapKeyValueStore<>());
+    }
+
     public static ConnectionPoolConfig getRedisPoolConfig() {
         ConnectionPoolConfig poolConfig = new ConnectionPoolConfig();
 
-        // TODO: Should be in .env file, but for now, we hardcode it here.
         poolConfig.setMaxTotal(8);
         poolConfig.setMaxIdle(8);
         poolConfig.setMinIdle(0);

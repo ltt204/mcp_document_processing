@@ -5,7 +5,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import individual.ltt204.entities.Job;
@@ -13,8 +12,8 @@ import individual.ltt204.entities.JobStatus;
 import individual.ltt204.grpc.ParsingRequest;
 import individual.ltt204.services.McpClient;
 import individual.ltt204.services.storage.IStorageService;
-import individual.ltt204.tools.ParserTool;
 import individual.ltt204.tools.ToolRegistry;
+import io.grpc.StatusRuntimeException;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 
 /**
@@ -27,23 +26,45 @@ public class JobService {
     private IStorageService<Job> jobStorageService;
     private IStorageService<Future<?>> futureStorageService;
     private ExecutorService pool;
-    private ScheduledExecutorService scheduler;
-    private McpClient mcpClient; // Placeholder for the MCP client, if needed for future extensions
+    private McpClient mcpClient;
+    private final Object futureLifecycleLock = new Object();
 
-    private Object futureLifecycleLock = new Object();
-
-    public JobService(IStorageService<Job> jobStorageService,
-            IStorageService<Future<?>> futureStorageService,
-            ExecutorService pool, ScheduledExecutorService scheduler) {
-        this.jobStorageService = jobStorageService;
-        this.futureStorageService = futureStorageService;
-        this.pool = pool;
-        this.scheduler = scheduler;
+    private JobService(JobServiceBuilder builder) {
+        this.jobStorageService = builder.jobStorageService;
+        this.futureStorageService = builder.futureStorageService;
+        this.pool = builder.pool;
+        this.mcpClient = builder.mcpClient;
     }
 
-    public JobService(IStorageService<Job> jobStorageService, McpClient mcpClient) {
-        this.jobStorageService = jobStorageService;
-        this.mcpClient = mcpClient;
+    public static class JobServiceBuilder {
+        private IStorageService<Job> jobStorageService;
+        private IStorageService<Future<?>> futureStorageService;
+        private ExecutorService pool;
+        private McpClient mcpClient;
+
+        public JobServiceBuilder jobStorageService(IStorageService<Job> jobStorageService) {
+            this.jobStorageService = jobStorageService;
+            return this;
+        }
+
+        public JobServiceBuilder futureStorageService(IStorageService<Future<?>> futureStorageService) {
+            this.futureStorageService = futureStorageService;
+            return this;
+        }
+
+        public JobServiceBuilder pool(ExecutorService pool) {
+            this.pool = pool;
+            return this;
+        }
+
+        public JobServiceBuilder mcpClient(McpClient mcpClient) {
+            this.mcpClient = mcpClient;
+            return this;
+        }
+
+        public JobService build() {
+            return new JobService(this);
+        }
     }
 
     public void submitJob(String jobID, String filePath) throws IllegalStateException, RuntimeException {
@@ -56,27 +77,26 @@ public class JobService {
                 "Processing file: " + filePath);
 
         jobStorageService.store(job.id().toString(), job);
-        mcpClient.convert(ParsingRequest.newBuilder().setJobId(jobID).build());
-        // synchronized (futureLifecycleLock) {
-        // try {
-        // Future<?> queuedJob = pool.submit(() -> {
-        // try {
-        // processJob(job);
-        // } finally {
-        // synchronized (futureLifecycleLock) {
-        // futureStorageService.delete(job.id().toString());
-        // }
-        // }
-        // });
-        // futureStorageService.store(job.id().toString(), queuedJob);
+        synchronized (futureLifecycleLock) {
+            try {
+                Future<?> queuedJob = pool.submit(() -> {
+                    try {
+                        processJob(job);
+                    } finally {
+                        synchronized (futureLifecycleLock) {
+                            futureStorageService.delete(job.id().toString());
+                        }
+                    }
+                });
+                futureStorageService.store(job.id().toString(), queuedJob);
 
-        // } catch (RejectedExecutionException e) {
-        // jobStorageService.delete(job.id().toString());
-        // futureStorageService.delete(job.id().toString());
+            } catch (RejectedExecutionException e) {
+                jobStorageService.delete(job.id().toString());
+                futureStorageService.delete(job.id().toString());
 
-        // throw new IllegalStateException("Server busy, retry later");
-        // }
-        // }
+                throw new IllegalStateException("Server busy, retry later");
+            }
+        }
 
     }
 
@@ -200,13 +220,15 @@ public class JobService {
                     .build();
         }
 
-        Future<?> future = futureStorageService.retrieve(jobId);
-        if (future == null) {
-            throw new IllegalArgumentException("Future not found for job: " + jobId);
-        }
+        // TODO: Later be replaced with mcp client cancel job
+        // Future<?> future = futureStorageService.retrieve(jobId);
+        // if (future == null) {
+        // throw new IllegalArgumentException("Future not found for job: " + jobId);
+        // }
 
-        boolean cancelled = future.cancel(true);
-        futureStorageService.delete(jobId);
+        // boolean cancelled = future.cancel(true);
+        // futureStorageService.delete(jobId);
+        boolean cancelled = true;
 
         boolean updated = jobStorageService.checkAndUpdate(
                 job.id().toString(),
@@ -227,72 +249,45 @@ public class JobService {
      * In-process worker using ThreadPoolExecutor to handle job processing
      * asynchronously.
      *
-     * @param job The job to be processed.
+     * @param job     The job to be processed.
+     * @param request The parsing request for the job.
      */
     private void processJob(Job job) {
         // Set job status to inprogress
         try {
             if (Thread.currentThread().isInterrupted()) {
-                System.err.println("Throw InterruptedException for job " + job.id());
-                throw new InterruptedException("Job is cancelled");
+                throw new InterruptedException("Job processing was interrupted");
             }
+            String filePath = job.request().get("filePath").toString();
+            ParsingRequest request = ParsingRequest.newBuilder()
+                    .setJobId(job.id().toString())
+                    .setFilepath(filePath)
+                    .build();
 
-            scheduler.schedule(() -> cancelTimeoutJobInternal(job.id().toString()),
-                    ToolRegistry.getInstance().getToolTimeout(job.request().get("filePath").toString()),
+            String result = mcpClient.convert(request,
+                    ToolRegistry.getInstance().getToolTimeout(filePath),
                     TimeUnit.MILLISECONDS);
-            jobStorageService.checkAndUpdate(job.id().toString(), job.WithStatus(JobStatus.IN_PROGRESS));
-
-            ParserTool parserTool = ToolRegistry.getInstance()
-                    .getToolByFileExtension(job.request().get("filePath").toString());
-
-            String result = parserTool.execute(job.request().get("filePath").toString());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
                     job.WithResult(Map.of(JobStatus.COMPLETED.getLabel().toLowerCase(), result))
                             .WithStatus(JobStatus.COMPLETED));
-        } catch (RuntimeException e) {
+
+        } catch (InterruptedException e) {
+            System.err.println("Job processing was interrupted for job " + job.id() + ": " + e.getMessage());
+            Thread.currentThread().interrupt(); // Restore interrupted status
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithResult(Map.of(JobStatus.CANCELLED.getLabel().toLowerCase(), "Job was interrupted"))
+                            .WithStatus(JobStatus.CANCELLED));
+        } catch (StatusRuntimeException e) {
             System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
                     job.WithResult(Map.of(JobStatus.ERROR.getLabel().toLowerCase(), e.toString()))
                             .WithStatus(JobStatus.ERROR));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.err.println("Cancelled Job " + job.id() + ": " + e.getMessage());
         }
-    }
-
-    private void processJob(Job job, ParsingRequest request) {
-        String filePath = job.request().get("filePath").toString();
-
-        mcpClient.convert(request).withDeadlineAfter(
-                ToolRegistry.getInstance().getToolTimeout(filePath),
-                TimeUnit.MILLISECONDS);
-
-    }
-
-    private void cancelTimeoutJobInternal(String jobId) {
-        Job job = jobStorageService.retrieve(jobId);
-        if (job == null) {
-            throw new IllegalArgumentException("Job not found: " + jobId);
-        }
-
-        if (job.status() == JobStatus.COMPLETED || job.status() == JobStatus.ERROR
-                || job.status() == JobStatus.CANCELLED || job.status() == JobStatus.TIMEOUT) {
-            return;
-        }
-
-        Future<?> future = futureStorageService.retrieve(jobId);
-        if (future != null) {
-            future.cancel(true);
-            futureStorageService.delete(jobId);
-        }
-
-        jobStorageService.checkAndUpdate(
-                job.id().toString(),
-                job.WithResult(Map.of(JobStatus.TIMEOUT.getLabel().toLowerCase(), "Job timed out"))
-                        .WithStatus(JobStatus.TIMEOUT));
     }
 }

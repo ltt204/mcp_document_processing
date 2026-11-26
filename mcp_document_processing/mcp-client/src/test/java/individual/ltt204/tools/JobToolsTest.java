@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import individual.ltt204.entities.CallEntry;
 import individual.ltt204.entities.Job;
 import individual.ltt204.services.job.JobService;
+import individual.ltt204.services.job.JobService.JobServiceBuilder;
 import individual.ltt204.services.parsing.PDFParsingService;
 import individual.ltt204.services.storage.ActiveFutureStorageService;
 import individual.ltt204.services.storage.JobStorageService;
@@ -77,7 +78,12 @@ public class JobToolsTest {
                 new LinkedBlockingQueue<Runnable>(2));
         scheduler = Executors.newSingleThreadScheduledExecutor();
 
-        jobService = new JobService(jobStorageService, futureStorageService, pool, scheduler);
+        jobService = new JobServiceBuilder()
+                .jobStorageService(jobStorageService)
+                .futureStorageService(futureStorageService)
+                .pool(pool)
+                .mcpClient(null) // Not needed for this test
+                .build();
     }
 
     @Test

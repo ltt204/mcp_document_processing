@@ -5,6 +5,7 @@ option java_package = "individual.ltt204.grpc";
 
 message ParsingRequest {
     string jobId = 1;
+    string filepath = 2;
 }
 
 message ParsingResult {
