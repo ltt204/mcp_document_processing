@@ -1,8 +1,8 @@
 package individual.ltt204.entities;
 
 public class CallEntry {
-    private String filePath;
     private String jobID;
+    private String filePath;
 
     public CallEntry() {
     }
@@ -16,7 +16,15 @@ public class CallEntry {
         return filePath;
     }
 
-    public String getjobID() {
+    public String getJobID() {
         return jobID;
+    }
+
+    @Override
+    public String toString() {
+        return "CallEntry{" +
+                "filePath='" + filePath + '\'' +
+                ", jobID='" + jobID + '\'' +
+                '}';
     }
 }

@@ -62,51 +62,55 @@ public class ParsingService extends ParsingServiceGrpc.ParsingServiceImplBase {
         public void run() {
             try {
                 try {
+                    System.out.println("Thread " + Thread.currentThread().getName() + " is processing job "
+                            + request.getJobId() + " for file: " + request.getFilepath() + "\n\n");
+
                     String result = processJob(request.getFilepath());
                     responseObserver.onNext(
                             ParsingResult.newBuilder()
                                     .setContent(result)
                                     .build());
-                    responseObserver.onCompleted();
                 } finally {
                     synchronized (futureStorageLock) {
                         futureStorageService.delete(request.getJobId());
                     }
                 }
             } catch (RuntimeException e) {
-                System.err.println("Error parsing the document for job " + request.getJobId() + ": " + e.getMessage());
+                System.err.println("Error parsing the document for job " + request.getJobId() + ":\n" + e.getMessage());
+                Thread.currentThread().interrupt();
+
                 responseObserver.onError(
                         Status.INTERNAL
                                 .withDescription("Error parsing the document: " + e.getMessage())
                                 .withCause(e)
                                 .asRuntimeException());
             } catch (InterruptedException e) {
-                System.err.println("Error parsing the document for job " + request.getJobId() + ": " + e.getMessage());
+                System.err.println(
+                        "Interrupted while parsing the document for job " + request.getJobId() + ":\n"
+                                + e.getMessage());
                 Thread.currentThread().interrupt();
+
                 responseObserver.onError(
                         Status.CANCELLED
                                 .withDescription("Job was cancelled: " + e.getMessage())
                                 .withCause(e)
                                 .asRuntimeException());
+            } finally {
+                responseObserver.onCompleted();
             }
         }
 
         private String processJob(String filePath) throws RuntimeException, InterruptedException {
             // Set job status to inprogress
-            try {
-                if (Thread.currentThread().isInterrupted()) {
-                    System.err.println("Throw InterruptedException for " + filePath);
-                    throw new InterruptedException("Job is cancelled");
-                }
-
-                ParserTool parserTool = ToolRegistry.getInstance()
-                        .getToolByFileExtension(filePath);
-
-                return parserTool.execute(filePath);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw e;
+            if (Thread.currentThread().isInterrupted()) {
+                System.err.println("Throw InterruptedException for " + filePath);
+                throw new InterruptedException("Job is cancelled");
             }
+
+            ParserTool parserTool = ToolRegistry.getInstance()
+                    .getToolByFileExtension(filePath);
+
+            return parserTool.execute(filePath);
         }
     }
 
@@ -115,14 +119,16 @@ public class ParsingService extends ParsingServiceGrpc.ParsingServiceImplBase {
             StreamObserver<ParsingResult> responseObserver) {
         try {
             ServerCallStreamObserver<ParsingResult> serverCallStreamObserver = (ServerCallStreamObserver<ParsingResult>) responseObserver;
-            if (serverCallStreamObserver.isCancelled()) {
-                System.out.println("Client cancelled the request.");
-                responseObserver.onError(
-                        Status.CANCELLED
-                                .withDescription("Client cancelled the request.")
-                                .asRuntimeException());
-                return;
-            }
+            serverCallStreamObserver.setOnCancelHandler(() -> {
+                System.out.println("Client cancelled the request for job " + request.getJobId());
+                synchronized (futureStorageLock) {
+                    Future<?> future = futureStorageService.retrieve(request.getJobId());
+                    if (future != null) {
+                        future.cancel(true);
+                        futureStorageService.delete(request.getJobId());
+                    }
+                }
+            });
 
             synchronized (futureStorageLock) {
                 Future<?> submittedJob = pool.submit(new ParsingJobRunner(request, responseObserver));

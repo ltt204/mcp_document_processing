@@ -45,25 +45,30 @@ public class JobTools {
 
                     try {
                         String jobID = UUID.randomUUID().toString();
+                        CallEntry newEntry = new CallEntry(jobID, filePath);
                         CallToolResult.Builder resultBuilder = CallToolResult.builder()
                                 .addTextContent("File path: " + filePath);
 
                         if (callID != null && !callID.isEmpty()) {
-                            boolean success = callsStorage.putIfAbsent(callID, new CallEntry(jobID, filePath));
-
+                            boolean success = callsStorage.putIfAbsent(callID, newEntry);
+                            System.err.println("Attempting to store call entry: " + newEntry.toString()
+                                    + ". Success: " + success);
                             if (!success) {
                                 CallEntry existedEntry = callsStorage.get(callID);
 
                                 if (!existedEntry.getFilePath().equals(filePath)) {
                                     return CallToolResult.builder()
-                                            .addTextContent("Error: Call ID already exists with a different file path: "
+                                            .isError(true)
+                                            .addTextContent("Call ID already exists with a different file path: "
                                                     + existedEntry.getFilePath())
                                             .build();
                                 }
 
-                                var existed = callsStorage.get(callID);
+                                System.err.println(
+                                        "Call ID already exists. Returning existing job ID: "
+                                                + existedEntry.toString());
                                 return resultBuilder.addTextContent("Call ID: " + callID)
-                                        .addTextContent("Job ID: " + existed.getjobID())
+                                        .addTextContent("Job ID: " + existedEntry.getJobID())
                                         .addTextContent("Call ID already exists.").build();
                             }
 
@@ -78,6 +83,18 @@ public class JobTools {
                                 .addTextContent("Job submitted successfully.")
                                 .build();
 
+                    } catch (IllegalStateException e) { // JobService reports a full pool this way
+                        System.err.println("Error submitting job with Exception: " + e.getClass().toString() + " - "
+                                + e.getMessage());
+
+                        if (callID != null && !callID.isEmpty()) {
+                            callsStorage.remove(callID);
+                        }
+
+                        return CallToolResult.builder()
+                                .isError(true)
+                                .addTextContent("Error: " + e.getMessage())
+                                .build();
                     } catch (RuntimeException e) {
                         System.err.println("Error submitting job with Exception: " + e.getClass().toString() + " - "
                                 + e.getMessage());

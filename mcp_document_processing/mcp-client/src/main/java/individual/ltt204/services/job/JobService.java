@@ -67,7 +67,7 @@ public class JobService {
         }
     }
 
-    public void submitJob(String jobID, String filePath) throws IllegalStateException, RuntimeException {
+    public void submitJob(String jobID, String filePath) throws RejectedExecutionException, RuntimeException {
         Job job = new Job(
                 UUID.fromString(jobID),
                 Map.of("filePath", filePath.trim()),
@@ -184,7 +184,6 @@ public class JobService {
 
         if (job.status() == JobStatus.PENDING || job.status() == JobStatus.IN_PROGRESS) {
             return CallToolResult.builder()
-                    .isError(true)
                     .addTextContent("Job is not completed yet. Current status: " + job.status())
                     .addTextContent("Job ID: " + jobId)
                     .build();
@@ -213,15 +212,13 @@ public class JobService {
                     .build();
         }
 
-        // TODO: Later be replaced with mcp client cancel job
-        // Future<?> future = futureStorageService.retrieve(jobId);
-        // if (future == null) {
-        // throw new IllegalArgumentException("Future not found for job: " + jobId);
-        // }
+        Future<?> future = futureStorageService.retrieve(jobId);
+        if (future == null) {
+            throw new IllegalArgumentException("Future not found for job: " + jobId);
+        }
 
-        // boolean cancelled = future.cancel(true);
-        // futureStorageService.delete(jobId);
-        boolean cancelled = true;
+        boolean cancelled = future.cancel(true);
+        futureStorageService.delete(jobId);
 
         boolean updated = jobStorageService.checkAndUpdate(
                 job.id().toString(),
@@ -266,9 +263,15 @@ public class JobService {
     private void processJob(Job job) {
         // Set job status to inprogress
         try {
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithStatus(JobStatus.IN_PROGRESS));
+
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Job processing was interrupted");
             }
+
             String filePath = job.request().get("filePath").toString();
             ParsingRequest request = ParsingRequest.newBuilder()
                     .setJobId(job.id().toString())
@@ -284,6 +287,14 @@ public class JobService {
                     job.WithResult(Map.of(JobStatus.COMPLETED.getLabel().toLowerCase(), result))
                             .WithStatus(JobStatus.COMPLETED));
 
+        } catch (IllegalArgumentException e) {
+            System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithResult(Map.of(JobStatus.ERROR.getLabel().toLowerCase(), e.getMessage()))
+                            .WithStatus(JobStatus.ERROR));
+
         } catch (InterruptedException e) {
             System.err.println("Job processing was interrupted for job " + job.id() + ": " + e.getMessage());
             Thread.currentThread().interrupt(); // Restore interrupted status
@@ -294,20 +305,16 @@ public class JobService {
                             .WithStatus(JobStatus.CANCELLED));
 
         } catch (StatusRuntimeException e) {
-            System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
+            System.err.println("WORKER ERROR for job " + job.id() + ": " + e.getMessage());
+            System.err.println("gRPC Status: " + e.getStatus());
+            System.err.println("gRPC Description: " + e.getStatus().getDescription());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),
-                    job.WithResult(Map.of(JobStatus.ERROR.getLabel().toLowerCase(), e.toString()))
+                    job.WithResult(
+                            Map.of(JobStatus.ERROR.getLabel().toLowerCase(), JobError.WorkerError.getMessage(e)))
                             .WithStatus(JobStatus.ERROR));
 
-        } catch (Exception e) {
-            System.err.println("Unexpected error processing job " + job.id() + ": " + e.getMessage());
-
-            jobStorageService.checkAndUpdate(
-                    job.id().toString(),
-                    job.WithResult(Map.of(JobStatus.ERROR.getLabel().toLowerCase(), e.toString()))
-                            .WithStatus(JobStatus.ERROR));
         }
     }
 }

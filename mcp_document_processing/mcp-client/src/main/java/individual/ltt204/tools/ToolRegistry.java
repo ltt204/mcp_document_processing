@@ -32,9 +32,9 @@ public class ToolRegistry {
         return new ArrayList<>(tools.keySet());
     }
 
-    public ParserTool getToolByFileExtension(String filePath) {
+    public ParserTool getToolByFileExtension(String filePath) throws IllegalArgumentException {
         if (filePath == null || filePath.isEmpty()) {
-            throw new RuntimeException("Document path is null or empty");
+            throw new IllegalArgumentException("Document path is null or empty");
         }
 
         String extension = getFileExtension(filePath);
@@ -43,22 +43,22 @@ public class ToolRegistry {
                 return tool;
             }
         }
-        throw new RuntimeException("No tool registered for file extension: " + extension);
+        throw new IllegalArgumentException("No tool registered for file extension: " + extension);
     }
 
-    public int getToolTimeout(String filePath) {
+    public int getToolTimeout(String filePath) throws IllegalArgumentException {
         ParserTool tool = getToolByFileExtension(filePath);
         if (tool != null) {
             return tool.getTimeout();
         }
-        throw new RuntimeException("No tool registered with name: " + filePath);
+        throw new IllegalArgumentException("No tool registered with name: " + filePath);
     }
 
     public void clear() {
         tools.clear();
     }
 
-    private String getFileExtension(String filePath) {
+    private String getFileExtension(String filePath) throws IllegalArgumentException {
         int lastDotIndex = filePath.lastIndexOf('.');
         if (lastDotIndex > 0) {
             return filePath.substring(lastDotIndex + 1);
