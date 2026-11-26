@@ -123,15 +123,7 @@ public class JobService {
         jobStorageService.store(job.id().toString(), job);
         synchronized (futureLifecycleLock) {
             try {
-                Future<?> queuedJob = pool.submit(() -> {
-                    try {
-                        processJob(job);
-                    } finally {
-                        synchronized (futureLifecycleLock) {
-                            futureStorageService.delete(job.id().toString());
-                        }
-                    }
-                });
+                Future<?> queuedJob = pool.submit(new JobProcessingRunner(job));
                 futureStorageService.store(job.id().toString(), queuedJob);
 
             } catch (RejectedExecutionException e) {
@@ -143,6 +135,7 @@ public class JobService {
         }
 
         return job.id().toString();
+
     }
 
     public int getJobCount() {
@@ -242,6 +235,25 @@ public class JobService {
                 .build();
     }
 
+    private class JobProcessingRunner implements Runnable {
+        private final Job job;
+
+        public JobProcessingRunner(Job job) {
+            this.job = job;
+        }
+
+        @Override
+        public void run() {
+            try {
+                processJob(job);
+            } finally {
+                synchronized (futureLifecycleLock) {
+                    futureStorageService.delete(job.id().toString());
+                }
+            }
+        }
+    }
+
     /**
      * Processes a job by executing the appropriate parser tool based on the file
      * extension.
@@ -249,8 +261,7 @@ public class JobService {
      * In-process worker using ThreadPoolExecutor to handle job processing
      * asynchronously.
      *
-     * @param job     The job to be processed.
-     * @param request The parsing request for the job.
+     * @param job The job to be processed.
      */
     private void processJob(Job job) {
         // Set job status to inprogress
@@ -281,8 +292,17 @@ public class JobService {
                     job.id().toString(),
                     job.WithResult(Map.of(JobStatus.CANCELLED.getLabel().toLowerCase(), "Job was interrupted"))
                             .WithStatus(JobStatus.CANCELLED));
+
         } catch (StatusRuntimeException e) {
             System.err.println("Error processing job " + job.id() + ": " + e.getMessage());
+
+            jobStorageService.checkAndUpdate(
+                    job.id().toString(),
+                    job.WithResult(Map.of(JobStatus.ERROR.getLabel().toLowerCase(), e.toString()))
+                            .WithStatus(JobStatus.ERROR));
+
+        } catch (Exception e) {
+            System.err.println("Unexpected error processing job " + job.id() + ": " + e.getMessage());
 
             jobStorageService.checkAndUpdate(
                     job.id().toString(),

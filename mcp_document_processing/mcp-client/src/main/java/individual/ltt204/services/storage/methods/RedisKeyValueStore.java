@@ -11,6 +11,8 @@ import redis.clients.jedis.Response;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.params.SetParams;
 import redis.clients.jedis.resps.ScanResult;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
@@ -156,19 +158,15 @@ public class RedisKeyValueStore<K, V> implements KeyValueStore<K, V> {
     }
 
     @Override
-    public V get(K key) {
-        try {
-            String redisKey = keyPrefix + key.toString();
-            String valueJson = redisClient.get(redisKey);
+    public V get(K key) throws JacksonException {
+        String redisKey = keyPrefix + key.toString();
+        String valueJson = redisClient.get(redisKey);
 
-            if (valueJson != null) {
-                return objectMapper.readValue(valueJson, valueType);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Error during get operation: " + e.getMessage(), e);
+        if (valueJson == null) {
+            return null;
         }
 
-        return null;
+        return objectMapper.readValue(valueJson, valueType);
     }
 
     @Override

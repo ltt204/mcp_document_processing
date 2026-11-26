@@ -4,6 +4,9 @@ public class CallEntry {
     private String filePath;
     private String jobID;
 
+    public CallEntry() {
+    }
+
     public CallEntry(String jobID, String filePath) {
         this.jobID = jobID;
         this.filePath = filePath;

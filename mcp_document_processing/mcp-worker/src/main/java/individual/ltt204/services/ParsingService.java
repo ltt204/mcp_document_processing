@@ -74,13 +74,14 @@ public class ParsingService extends ParsingServiceGrpc.ParsingServiceImplBase {
                     }
                 }
             } catch (RuntimeException e) {
-                e.printStackTrace();
+                System.err.println("Error parsing the document for job " + request.getJobId() + ": " + e.getMessage());
                 responseObserver.onError(
                         Status.INTERNAL
                                 .withDescription("Error parsing the document: " + e.getMessage())
                                 .withCause(e)
                                 .asRuntimeException());
             } catch (InterruptedException e) {
+                System.err.println("Error parsing the document for job " + request.getJobId() + ": " + e.getMessage());
                 Thread.currentThread().interrupt();
                 responseObserver.onError(
                         Status.CANCELLED
@@ -104,7 +105,6 @@ public class ParsingService extends ParsingServiceGrpc.ParsingServiceImplBase {
                 return parserTool.execute(filePath);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                System.err.println("Cancelled job for " + filePath + ": " + e.getMessage());
                 throw e;
             }
         }
@@ -130,9 +130,11 @@ public class ParsingService extends ParsingServiceGrpc.ParsingServiceImplBase {
             }
 
         } catch (IllegalArgumentException e) {
+            System.err.println("Error parsing the document for job " + request.getJobId() + ": " + e.getMessage());
             responseObserver.onError(
                     Status.INVALID_ARGUMENT
-                            .withDescription("Error parsing the document: " + e.getMessage())
+                            .withDescription(
+                                    "Error parsing the document for job " + request.getJobId() + ": " + e.getMessage())
                             .withCause(e)
                             .asRuntimeException());
             e.printStackTrace();

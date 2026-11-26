@@ -14,8 +14,6 @@ public class JobTools {
 
     private JobService jobService;
 
-    // private ConcurrentHashMap<String, CallEntry> callsStorage = new
-    // ConcurrentHashMap<>();
     private final KeyValueStore<String, CallEntry> callsStorage;
 
     public JobTools(JobService jobService, KeyValueStore<String, CallEntry> callsStorage) {
@@ -81,9 +79,11 @@ public class JobTools {
                                 .build();
 
                     } catch (RuntimeException e) {
+                        System.err.println("Error submitting job with Exception: " + e.getClass().toString() + " - "
+                                + e.getMessage());
                         return CallToolResult.builder()
                                 .isError(true)
-                                .addTextContent(e.getMessage())
+                                .addTextContent("Error: " + e.getMessage())
                                 .build();
                     }
                 })
