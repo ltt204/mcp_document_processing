@@ -4,6 +4,11 @@ WORKER_JAR = mcp-worker/target/mcp-worker-1.0-SNAPSHOT.jar
 bundle:
 	mvn clean package
 
+
+bundle-ntest:
+	mvn clean package -DskipTests
+
+
 run:
 	java -jar $(CLIENT_JAR)
 
